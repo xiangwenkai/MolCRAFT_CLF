@@ -47,13 +47,14 @@ class SBDDTrainLoop(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         t1 = time()
-        protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand = (
+        protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_emb = (
             batch.protein_pos,
             batch.protein_atom_feature.float(),
             batch.protein_element_batch,
             batch.ligand_pos,
             batch.ligand_atom_feature_full,
             batch.ligand_element_batch,
+            batch.lig_emb
         )  # get the data from the batch
         # batch is a data object
         # protein_pos: [N_pro,3]
@@ -111,6 +112,7 @@ class SBDDTrainLoop(pl.LightningModule):
             ligand_pos=ligand_pos,
             ligand_v=ligand_v,
             batch_ligand=batch_ligand,
+            lig_embedding=lig_emb,
         )
 
         # here the discretised_loss is close for current version.
