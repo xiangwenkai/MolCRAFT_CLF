@@ -1,8 +1,9 @@
 from absl import logging
 
-import math
 import numpy as np
 from tqdm import trange
+import random
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -12,116 +13,6 @@ from core.config.config import Struct
 from core.models.common import compose_context, ShiftedSoftplus
 from core.models.bfn_base import BFNBase
 from core.models.uni_transformer import UniTransformerO2TwoUpdateGeneral
-
-
-class CrossAttention(nn.Module):
-    """
-    add cross attention
-    """
-
-    def __init__(self, config):
-        super().__init__()
-        assert config.n_embd % config.n_head == 0
-
-        # cross attention
-        self.cross_key = nn.Linear(config.n_embd, config.n_embd)
-        self.cross_query = nn.Linear(config.n_embd, config.n_embd)
-        self.cross_value = nn.Linear(config.n_embd, config.n_embd)
-
-        # regularization
-        self.attn_drop = nn.Dropout(config.attn_pdrop)
-        self.resid_drop = nn.Dropout(config.resid_pdrop)
-        self.cross_crop = nn.Dropout(config.cross_pdrop)
-        # output projection
-        self.proj = nn.Linear(config.n_embd, config.n_embd)
-
-        num = 0
-
-        self.n_head = config.n_head
-
-        if config.mode == 'concat':
-            self.concat_proj = nn.Sequential(
-                nn.Linear(config.n_embd + 512, config.n_embd),
-                nn.GELU(),
-                nn.Linear(config.n_embd, config.n_embd),
-                nn.LayerNorm(config.n_embd),
-                nn.Dropout(config.cross_pdrop),
-            )
-
-        elif config.mode == 'cross':
-            self.cross_attn_proj = nn.Sequential(
-                nn.Linear(512, config.n_embd),
-                nn.GELU(),
-                nn.Linear(config.n_embd, config.n_embd),
-                nn.LayerNorm(config.n_embd),
-                nn.Dropout(config.cross_pdrop),
-            )
-        else:
-            raise ValueError('mode should be "concat" or "cross"')
-
-    def forward(self, x, layer_past=None, encoder_embedding=None, encoder_mask=None, mode='concat'):
-        B, T, C = x.size()
-
-        if encoder_embedding is not None and encoder_mask is not None:
-            ## option 1: pool encoder_embedding to a single vector, then concat it to each position and use MLP to adjust dimension
-            if mode == 'concat':
-                # import pdb; pdb.set_trace()
-                encoder_embedding = encoder_embedding.sum(axis=1)
-
-                # assume encoder_embedding shape is (B, C), we expand it to (B, T, C)
-                encoder_embedding_expanded = encoder_embedding.unsqueeze(1).expand(-1, T, -1)
-                cross_att_in = torch.cat([x, encoder_embedding_expanded], dim=-1)
-                # import pdb; pdb.set_trace()
-                cross_att_in = self.concat_proj(cross_att_in)
-
-                # cross attention key, query, value
-                cross_k = self.cross_key(cross_att_in).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-                cross_q = self.cross_query(cross_att_in).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-                cross_v = self.cross_value(cross_att_in).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-
-                # calculate cross attention weights
-                cross_att = (cross_q @ cross_k.transpose(-2, -1)) * (1.0 / math.sqrt(cross_k.size(-1)))
-                cross_att = F.softmax(cross_att, dim=-1)
-                cross_att = self.attn_drop(cross_att)
-                cross_y = cross_att @ cross_v
-                cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
-                # import pdb; pdb.set_trace()
-
-            elif mode == 'cross':
-                ## option 2: encoder_embedding is a sequence of vectors, then use encoder_mask to mask the padding
-                # encoder_embedding shape is (B, S, C)，S is sequence length after padding
-                # encoder_mask shape is (B, S)，valid position is 1，padding position is 0
-                # import pdb; pdb.set_trace()
-                B, S, _ = encoder_embedding.size()
-                encoder_embedding = self.cross_attn_proj(encoder_embedding)
-                # key, query, value
-                cross_k = self.cross_key(encoder_embedding).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
-                cross_q = self.cross_query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-                cross_v = self.cross_value(encoder_embedding).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
-
-                # calculate cross attention weights
-                cross_att = (cross_q @ cross_k.transpose(-2, -1)) * (1.0 / math.sqrt(cross_k.size(-1)))
-                # import pdb; pdb.set_trace()
-                # apply encoder_mask to mask the padding position
-                if encoder_mask is not None:
-                    # expand mask to match attention score shape (B, 1, 1, S)
-                    encoder_mask = encoder_mask.unsqueeze(1).unsqueeze(2)
-                    # set the attention score of padding position to negative infinity
-                    cross_att = cross_att.masked_fill(encoder_mask == 0, float('-inf'))
-
-                # softmax
-                cross_att = F.softmax(cross_att, dim=-1)
-                cross_att = self.attn_drop(cross_att)
-
-                cross_y = cross_att @ cross_v
-                cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
-
-            else:
-                raise ValueError('mode should be "concat" or "cross"')
-
-        # output projection
-        y = self.resid_drop(self.proj(cross_y))
-        return y, None
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -220,6 +111,8 @@ class BFN4SBDDScoreModel(BFNBase):
         net_config = Struct(**net_config)
         self.config = net_config
 
+        self.guide_weight = 1.8 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
+
         if net_config.name == 'unio2net':
             self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict())
         else:
@@ -273,10 +166,12 @@ class BFN4SBDDScoreModel(BFNBase):
         protein_v,  # transform from
         batch_protein,  # index for protein
         lig_embedding,  # soft classifier free guide
+        embedding_mask,  # lig embedding mask
         theta_h_t,
         mu_pos_t,
         batch_ligand,  # index for ligand
         gamma_coord,
+        guide_weight=0.,  # guide
         return_all=False,  # legacy from targetdiff
         fix_x=False,
     ):
@@ -336,7 +231,7 @@ class BFN4SBDDScoreModel(BFNBase):
 
         # time = 2 * time - 1
         outputs = self.unio2net(
-            h_all, pos_all, mask_ligand, batch_all, return_all=return_all, fix_x=fix_x
+            h_all, pos_all, mask_ligand, batch_all, lig_embedding, embedding_mask, guide_weight=0., return_all=return_all, fix_x=fix_x
         )
         final_pos, final_h = (
             outputs["x"],
@@ -411,12 +306,29 @@ class BFN4SBDDScoreModel(BFNBase):
         ligand_pos,
         ligand_v,
         batch_ligand,
-        lig_embedding
+        lig_embedding,
     ):
         # TODO: implement reconstruction loss (but do we really need it?)
         return self.loss_one_step(
-            t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand
+            t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_embedding
         )
+
+    def get_emb_mask(self, batch_ligand, mask_prob=0.5, mask_rate=0.5):
+        batch_groups = defaultdict(list)
+        for idx, batch_id in enumerate(batch_ligand):
+            batch_groups[batch_id].append(idx)
+
+        mask = np.ones(len(batch_ligand))
+
+        for group_indices in batch_groups.values():
+            # if mask
+            if np.random.rand() < mask_prob:
+                #  mask
+                num_elements = len(group_indices)
+                num_to_mask = int(num_elements * mask_rate)  # number of mask
+                mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
+                mask[mask_indices] = 0  # set to 0
+        return mask
 
     def loss_one_step(
         self,
@@ -460,17 +372,36 @@ class BFN4SBDDScoreModel(BFNBase):
         # 2. Compute output distribution parameters for p_O (x' | θ; t) (x_hat or k^(d) logits)
         # continuous x ~ δ(x − x_hat(θ, t))
         # discrete k^(d) ~ softmax(Ψ^(d)(θ, t))_k
-        coord_pred, p0_h, k_hat = self.interdependency_modeling(
+        embedding_mask = self.get_emb_mask(batch_ligand)
+        coord_pred_cond, p0_h_cond, k_hat_cond = self.interdependency_modeling(
             time=t,
             protein_pos=protein_pos,
             protein_v=protein_v,
             batch_protein=batch_protein,
             lig_embedding=lig_embedding,
+            embedding_mask=embedding_mask,
             theta_h_t=theta,
             mu_pos_t=mu_coord,
             batch_ligand=batch_ligand,
             gamma_coord=gamma_coord,
         )  # [N, 3], [N, K], [?]
+
+        lig_embedding = torch.zeros(lig_embedding.shape, device=lig_embedding.device)
+        coord_pred_uncond, p0_h_uncond, k_hat_uncond = self.interdependency_modeling(
+            time=t,
+            protein_pos=protein_pos,
+            protein_v=protein_v,
+            batch_protein=batch_protein,
+            lig_embedding=lig_embedding,
+            embedding_mask=embedding_mask,
+            theta_h_t=theta,
+            mu_pos_t=mu_coord,
+            batch_ligand=batch_ligand,
+            gamma_coord=gamma_coord,
+        )  # [N, 3], [N, K], [?]
+        coord_pred = (1 + self.guide_weight) * coord_pred_cond - self.guide_weight * coord_pred_uncond
+        p0_h = (1 + self.guide_weight) * p0_h_cond - self.guide_weight * p0_h_uncond
+
         # if self.include_charge:
         #     k_c = torch.tensor(self.k_c).to(self.device).unsqueeze(-1).unsqueeze(0)
         #     k_hat = (k_hat * k_c).sum(dim=1)

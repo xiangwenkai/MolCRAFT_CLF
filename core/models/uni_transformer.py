@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,6 +7,116 @@ from torch_geometric.nn import radius_graph, knn_graph
 from torch_scatter import scatter_softmax, scatter_sum
 
 from core.models.common import GaussianSmearing, MLP, batch_hybrid_edge_connection, outer_product
+
+
+class CrossAttention(nn.Module):
+    """
+    add cross attention
+    """
+
+    def __init__(self, n_embd, n_head, attn_pdrop=0., resid_pdrop=0., cross_pdrop=0., mode='cross'):
+        super().__init__()
+        assert n_embd % n_head == 0
+
+        # cross attention
+        self.cross_key = nn.Linear(n_embd, n_embd)
+        self.cross_query = nn.Linear(n_embd, n_embd)
+        self.cross_value = nn.Linear(n_embd, n_embd)
+
+        # regularization
+        self.attn_drop = nn.Dropout(attn_pdrop)
+        self.resid_drop = nn.Dropout(resid_pdrop)
+        self.cross_crop = nn.Dropout(cross_pdrop)
+        # output projection
+        self.proj = nn.Linear(n_embd, n_embd)
+
+        num = 0
+
+        self.n_head = n_head
+
+        if mode == 'concat':
+            self.concat_proj = nn.Sequential(
+                nn.Linear(n_embd + 512, n_embd),
+                nn.GELU(),
+                nn.Linear(n_embd, n_embd),
+                nn.LayerNorm(n_embd),
+                nn.Dropout(cross_pdrop),
+            )
+
+        elif mode == 'cross':
+            self.cross_attn_proj = nn.Sequential(
+                nn.Linear(512, n_embd),
+                nn.GELU(),
+                nn.Linear(n_embd, n_embd),
+                nn.LayerNorm(n_embd),
+                nn.Dropout(cross_pdrop),
+            )
+        else:
+            raise ValueError('mode should be "concat" or "cross"')
+
+    def forward(self, x, layer_past=None, encoder_embedding=None, encoder_mask=None, mode='cross'):
+        B, T, C = x.size()
+
+        if encoder_embedding is not None and encoder_mask is not None:
+            ## option 1: pool encoder_embedding to a single vector, then concat it to each position and use MLP to adjust dimension
+            if mode == 'concat':
+                # import pdb; pdb.set_trace()
+                encoder_embedding = encoder_embedding.sum(axis=1)
+
+                # assume encoder_embedding shape is (B, C), we expand it to (B, T, C)
+                encoder_embedding_expanded = encoder_embedding.unsqueeze(1).expand(-1, T, -1)
+                cross_att_in = torch.cat([x, encoder_embedding_expanded], dim=-1)
+                # import pdb; pdb.set_trace()
+                cross_att_in = self.concat_proj(cross_att_in)
+
+                # cross attention key, query, value
+                cross_k = self.cross_key(cross_att_in).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_q = self.cross_query(cross_att_in).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_v = self.cross_value(cross_att_in).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+
+                # calculate cross attention weights
+                cross_att = (cross_q @ cross_k.transpose(-2, -1)) * (1.0 / math.sqrt(cross_k.size(-1)))
+                cross_att = F.softmax(cross_att, dim=-1)
+                cross_att = self.attn_drop(cross_att)
+                cross_y = cross_att @ cross_v
+                cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
+                # import pdb; pdb.set_trace()
+
+            elif mode == 'cross':
+                ## option 2: encoder_embedding is a sequence of vectors, then use encoder_mask to mask the padding
+                # encoder_embedding shape is (B, S, C)£¬S is sequence length after padding
+                # encoder_mask shape is (B, S)£¬valid position is 1£¬padding position is 0
+                # import pdb; pdb.set_trace()
+                B, S, _ = encoder_embedding.size()
+                encoder_embedding = self.cross_attn_proj(encoder_embedding)
+                # key, query, value
+                cross_k = self.cross_key(encoder_embedding).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_q = self.cross_query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_v = self.cross_value(encoder_embedding).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
+
+                # calculate cross attention weights
+                cross_att = (cross_q @ cross_k.transpose(-2, -1)) * (1.0 / math.sqrt(cross_k.size(-1)))
+                # import pdb; pdb.set_trace()
+                # apply encoder_mask to mask the padding position
+                if encoder_mask is not None:
+                    # expand mask to match attention score shape (B, 1, 1, S)
+                    encoder_mask = encoder_mask.unsqueeze(1).unsqueeze(2)
+                    # set the attention score of padding position to negative infinity
+                    cross_att = cross_att.masked_fill(encoder_mask == 0, float('-inf'))
+
+                # softmax
+                cross_att = F.softmax(cross_att, dim=-1)
+                cross_att = self.attn_drop(cross_att)
+
+                cross_y = cross_att @ cross_v
+                cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
+
+            else:
+                raise ValueError('mode should be "concat" or "cross"')
+
+        # output projection
+        y = self.resid_drop(self.proj(cross_y))
+        return y, None
 
 
 class BaseX2HAttLayer(nn.Module):
@@ -271,7 +382,9 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 num_x2h=self.num_x2h, num_h2x=self.num_h2x, r_max=self.r_max, num_node_types=self.num_node_types,
                 ew_net_type=self.ew_net_type, x2h_out_fc=self.x2h_out_fc, sync_twoup=self.sync_twoup,
             )
-            base_block.append(layer)
+            h_cross_atten_layer = CrossAttention(n_embd=self.hidden_dim, n_head=max(int(self.n_heads/2), 1))
+            x_cross_atten_layer = CrossAttention(n_embd=self.hidden_dim, n_head=max(int(self.n_heads/2), 1))
+            base_block.append((layer, h_cross_atten_layer, x_cross_atten_layer))
         return nn.ModuleList(base_block)
 
     def _connect_edge(self, x, mask_ligand, batch):
@@ -299,7 +412,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
         edge_type = F.one_hot(edge_type, num_classes=4)
         return edge_type
 
-    def forward(self, h, x, mask_ligand, batch, return_all=False, fix_x=False):
+    def forward(self, h, x, mask_ligand, batch, lig_embedding, embedding_mask, return_all=False, fix_x=False):
 
         all_x = [x]
         all_h = [h]
@@ -318,7 +431,9 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
             else:
                 e_w = None
 
-            for l_idx, layer in enumerate(self.base_block):
+            for l_idx, layer, h_cross_atten_layer, x_cross_atten_layer in enumerate(self.base_block):
+                h = h_cross_atten_layer(h, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                x = x_cross_atten_layer(x, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                 h, x = layer(h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
             all_x.append(x)
             all_h.append(h)

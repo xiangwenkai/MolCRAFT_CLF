@@ -48,11 +48,6 @@ dynamics:
       r_max: 10.
       x2h_out_fc: False
       sync_twoup: False
-      cross_attn:
-          n_layer: 12
-          n_head: 12
-          n_embd: 768
-          mode: cross
 
 
 accounting:
