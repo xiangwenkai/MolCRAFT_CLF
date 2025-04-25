@@ -213,7 +213,7 @@ if __name__ == "__main__":
     parser.add_argument("--visual_chain", action="store_true")
     parser.add_argument("--docking_mode", type=str, default="vina_score", choices=['vina_score', 'vina_dock'])
 
-    os.system('wandb offline')
+    os.system('wandb online')
 
     _args = parser.parse_args()
     if _args.ckpt_path.lstrip('./') == 'checkpoints/last.ckpt':
@@ -249,7 +249,7 @@ if __name__ == "__main__":
     if cfg.empty_folder:
         shutil.rmtree(cfg.accounting.logdir)
 
-    # wandb_logger = get_logger(cfg)
+    wandb_logger = get_logger(cfg)
     
     if cfg.test_only:
         if os.path.exists(cfg.accounting.dump_config_path):
@@ -273,7 +273,7 @@ if __name__ == "__main__":
         cfg.save2yaml(cfg.accounting.dump_config_path)
 
     train_loader, val_loader, test_loader = get_dataloader(cfg)
-    # wandb_logger.log_hyperparams(cfg.todict())
+    wandb_logger.log_hyperparams(cfg.todict())
     print(f"The config of this process is:\n{cfg}")
 
     model = SBDDTrainLoop(config=cfg)
@@ -284,7 +284,7 @@ if __name__ == "__main__":
         max_epochs=cfg.train.epochs,
         check_val_every_n_epoch=cfg.train.ckpt_freq,
         devices=1,
-        # logger=wandb_logger,
+        logger=wandb_logger,
         num_sanity_val_steps=0,
         inference_mode=not cfg.test_only,
         callbacks=[

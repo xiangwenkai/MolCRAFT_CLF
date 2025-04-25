@@ -111,7 +111,7 @@ class BFN4SBDDScoreModel(BFNBase):
         net_config = Struct(**net_config)
         self.config = net_config
 
-        self.guide_weight = 1.8 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
+        self.guide_weight = 0.1 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
 
         if net_config.name == 'unio2net':
             self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict())
@@ -171,7 +171,6 @@ class BFN4SBDDScoreModel(BFNBase):
         mu_pos_t,
         batch_ligand,  # index for ligand
         gamma_coord,
-        guide_weight=0.,  # guide
         return_all=False,  # legacy from targetdiff
         fix_x=False,
     ):
@@ -231,7 +230,7 @@ class BFN4SBDDScoreModel(BFNBase):
 
         # time = 2 * time - 1
         outputs = self.unio2net(
-            h_all, pos_all, mask_ligand, batch_all, lig_embedding, embedding_mask, guide_weight=0., return_all=return_all, fix_x=fix_x
+            h_all, pos_all, mask_ligand, batch_ligand, batch_all, lig_embedding, embedding_mask, return_all=return_all, fix_x=fix_x
         )
         final_pos, final_h = (
             outputs["x"],
@@ -266,13 +265,13 @@ class BFN4SBDDScoreModel(BFNBase):
         #     h_final = h_final[:, :-1]
 
         # 2. for discrete, network outputs Ψ(θ, t)
-        # take softmax will do
-        if K == 2:
-            p0_1 = torch.sigmoid(final_ligand_v)  #
-            p0_2 = 1 - p0_1
-            p0_h = torch.cat((p0_1, p0_2), dim=-1)  #
-        else:
-            p0_h = torch.nn.functional.softmax(final_ligand_v, dim=-1)  # [N_ligand, 13]
+        # # take softmax will do
+        # if K == 2:
+        #     p0_1 = torch.sigmoid(final_ligand_v)  #
+        #     p0_2 = 1 - p0_1
+        #     p0_h = torch.cat((p0_1, p0_2), dim=-1)  #
+        # else:
+        #     p0_h = torch.nn.functional.softmax(final_ligand_v, dim=-1)  # [N_ligand, 13]
         """
         for discretised variable, we return p_o
         """
@@ -295,7 +294,7 @@ class BFN4SBDDScoreModel(BFNBase):
 
         # TODO: here the preds are reformated.
         # print(coord_pred.shape, p0_h.shape, k_hat.shape)
-        return coord_pred, p0_h, k_hat
+        return coord_pred, final_ligand_v, k_hat
 
     def reconstruction_loss_one_step(
         self,
@@ -313,7 +312,7 @@ class BFN4SBDDScoreModel(BFNBase):
             t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_embedding
         )
 
-    def get_emb_mask(self, batch_ligand, mask_prob=0.5, mask_rate=0.5):
+    def get_emb_mask(self, batch_ligand, mask_prob=0.5):
         batch_groups = defaultdict(list)
         for idx, batch_id in enumerate(batch_ligand):
             batch_groups[batch_id].append(idx)
@@ -325,10 +324,11 @@ class BFN4SBDDScoreModel(BFNBase):
             if np.random.rand() < mask_prob:
                 #  mask
                 num_elements = len(group_indices)
-                num_to_mask = int(num_elements * mask_rate)  # number of mask
+                mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
                 mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
                 mask[mask_indices] = 0  # set to 0
-        return mask
+        return torch.tensor(mask)
 
     def loss_one_step(
         self,
@@ -373,7 +373,7 @@ class BFN4SBDDScoreModel(BFNBase):
         # continuous x ~ δ(x − x_hat(θ, t))
         # discrete k^(d) ~ softmax(Ψ^(d)(θ, t))_k
         embedding_mask = self.get_emb_mask(batch_ligand)
-        coord_pred_cond, p0_h_cond, k_hat_cond = self.interdependency_modeling(
+        coord_pred_cond, final_lig_v_cond, k_hat_cond = self.interdependency_modeling(
             time=t,
             protein_pos=protein_pos,
             protein_v=protein_v,
@@ -387,7 +387,7 @@ class BFN4SBDDScoreModel(BFNBase):
         )  # [N, 3], [N, K], [?]
 
         lig_embedding = torch.zeros(lig_embedding.shape, device=lig_embedding.device)
-        coord_pred_uncond, p0_h_uncond, k_hat_uncond = self.interdependency_modeling(
+        coord_pred_uncond, final_lig_v_uncond, k_hat_uncond = self.interdependency_modeling(
             time=t,
             protein_pos=protein_pos,
             protein_v=protein_v,
@@ -399,8 +399,18 @@ class BFN4SBDDScoreModel(BFNBase):
             batch_ligand=batch_ligand,
             gamma_coord=gamma_coord,
         )  # [N, 3], [N, K], [?]
-        coord_pred = (1 + self.guide_weight) * coord_pred_cond - self.guide_weight * coord_pred_uncond
-        p0_h = (1 + self.guide_weight) * p0_h_cond - self.guide_weight * p0_h_uncond
+        coord_eps = (1 + self.guide_weight) * (coord_pred_cond - mu_coord) - self.guide_weight * (coord_pred_uncond - mu_coord)
+        coord_pred = mu_coord + coord_eps
+        h_eps = (1 + self.guide_weight) * (final_lig_v_cond - theta) - self.guide_weight * (final_lig_v_uncond - theta)
+        final_lig_v = theta + h_eps
+
+        # take softmax will do
+        if K == 2:
+            p0_1 = torch.sigmoid(final_lig_v)  #
+            p0_2 = 1 - p0_1
+            p0_h = torch.cat((p0_1, p0_2), dim=-1)  #
+        else:
+            p0_h = torch.nn.functional.softmax(final_lig_v, dim=-1)  # [N_ligand, 13]
 
         # if self.include_charge:
         #     k_c = torch.tensor(self.k_c).to(self.device).unsqueeze(-1).unsqueeze(0)
@@ -489,6 +499,7 @@ class BFN4SBDDScoreModel(BFNBase):
         batch_protein,
         batch_ligand,
         n_nodes,  # B
+        lig_emb,
         sample_steps=1000,
         desc='',
         ligand_pos=None,  # for debug
@@ -560,21 +571,63 @@ class BFN4SBDDScoreModel(BFNBase):
             # debug only
             # mu_coord_gt, gamma_coord_gt = self.continuous_var_bayesian_update(t, sigma1=self.sigma1_coord, x=ligand_pos)
 
-            coord_pred, p0_h_pred, k_hat = self.interdependency_modeling(
+            # coord_pred, p0_h_pred, k_hat = self.interdependency_modeling(
+            #     time=t,
+            #     protein_pos=protein_pos,
+            #     protein_v=protein_v,
+            #     batch_protein=batch_protein,
+            #     batch_ligand=batch_ligand,
+            #     theta_h_t=theta_h_t,
+            #     # mu_pos_t=mu_coord_gt,  # fix mu pos guidance, type decoding
+            #     # mu_pos_t=mu_pos_t if i > sample_steps/10 else mu_coord_gt,  # early guidance
+            #     mu_pos_t=mu_pos_t,  # no guidance
+            #     gamma_coord=gamma_coord,
+            #     # TODO: add charge
+            #     # mu_charge_t=mu_charge_t,
+            #     # gamma_charge=gamma_charge,
+            # )
+
+            embedding_mask = self.get_emb_mask(batch_ligand)
+            coord_pred_cond, final_lig_v_cond, k_hat_cond = self.interdependency_modeling(
                 time=t,
                 protein_pos=protein_pos,
                 protein_v=protein_v,
                 batch_protein=batch_protein,
+                lig_embedding=lig_emb,
+                embedding_mask=embedding_mask,
+                theta_h_t=theta,
+                mu_pos_t=mu_coord,
                 batch_ligand=batch_ligand,
-                theta_h_t=theta_h_t,
-                # mu_pos_t=mu_coord_gt,  # fix mu pos guidance, type decoding
-                # mu_pos_t=mu_pos_t if i > sample_steps/10 else mu_coord_gt,  # early guidance
-                mu_pos_t=mu_pos_t,  # no guidance
                 gamma_coord=gamma_coord,
-                # TODO: add charge
-                # mu_charge_t=mu_charge_t,
-                # gamma_charge=gamma_charge,
-            )
+            )  # [N, 3], [N, K], [?]
+
+            lig_emb = torch.zeros(lig_emb.shape, device=lig_emb.device)
+            coord_pred_uncond, final_lig_v_uncond, k_hat_uncond = self.interdependency_modeling(
+                time=t,
+                protein_pos=protein_pos,
+                protein_v=protein_v,
+                batch_protein=batch_protein,
+                lig_embedding=lig_emb,
+                embedding_mask=embedding_mask,
+                theta_h_t=theta,
+                mu_pos_t=mu_coord,
+                batch_ligand=batch_ligand,
+                gamma_coord=gamma_coord,
+            )  # [N, 3], [N, K], [?]
+            coord_eps = (1 + self.guide_weight) * (coord_pred_cond - mu_coord) - self.guide_weight * (
+                        coord_pred_uncond - mu_coord)
+            coord_pred = mu_coord + coord_eps
+            h_eps = (1 + self.guide_weight) * (final_lig_v_cond - theta) - self.guide_weight * (
+                        final_lig_v_uncond - theta)
+            final_lig_v = theta + h_eps
+
+            # take softmax will do
+            if K == 2:
+                p0_1 = torch.sigmoid(final_lig_v)  #
+                p0_2 = 1 - p0_1
+                p0_h_pred = torch.cat((p0_1, p0_2), dim=-1)  #
+            else:
+                p0_h_pred = torch.nn.functional.softmax(final_lig_v, dim=-1)  # [N_ligand, 13]
 
             # debug only
             # if i % (sample_steps // 10) == 0:
