@@ -1,4 +1,4 @@
-project_name: &_project_name !ENV "${LOGNAME}_bfn_sbdd"
+project_name: &_project_name !ENV "${LOGNAME}_bfn_sbdd_cfg"
 exp_name: &_exp_name !SUB ${exp_name}
 revision: &_revision !SUB ${revision}
 debug: !SUB ${debug}
