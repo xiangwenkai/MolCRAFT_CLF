@@ -787,7 +787,7 @@ class BFN4SBDDScoreModel(BFNBase):
                 # sample_traj.append((coord_pred, sample_pred,k_hat))
 
         # 5. Compute final output distribution parameters for p_O (x' | θ; t)
-        mu_pos_final_cond, final_lig_v_cond, k_hat = self.interdependency_modeling(
+        mu_pos_final_cond, final_lig_v_cond, k_hat_final = self.interdependency_modeling(
             time=torch.ones((n_nodes, 1)).to(self.device)[batch_ligand],
             protein_pos=protein_pos,
             protein_v=protein_v,
@@ -801,7 +801,7 @@ class BFN4SBDDScoreModel(BFNBase):
         )  # [N, 3], [N, K], [?]
 
         lig_emb = torch.zeros(lig_emb.shape, device=lig_emb.device)
-        mu_pos_final_uncond, final_lig_v_uncond, k_hat = self.interdependency_modeling(
+        mu_pos_final_uncond, final_lig_v_uncond, k_hat_final = self.interdependency_modeling(
             time=torch.ones((n_nodes, 1)).to(self.device)[batch_ligand],
             protein_pos=protein_pos,
             protein_v=protein_v,
