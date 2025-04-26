@@ -553,6 +553,7 @@ class BFN4SBDDScoreModel(BFNBase):
         # TODO: debug
         mu_pos_t = mu_pos_t[batch_ligand]
         theta_h_t = theta_h_t[batch_ligand]
+        embedding_mask = self.get_emb_mask(batch_ligand)
         for i in trange(1, sample_steps + 1, desc=f'{desc}'):
             t = torch.ones((n_nodes, 1)).to(self.device) * (i - 1) / sample_steps
             if not self.use_discrete_t and not self.destination_prediction:
@@ -587,7 +588,6 @@ class BFN4SBDDScoreModel(BFNBase):
             #     # gamma_charge=gamma_charge,
             # )
 
-            embedding_mask = self.get_emb_mask(batch_ligand)
             coord_pred_cond, final_lig_v_cond, k_hat = self.interdependency_modeling(
                 time=t,
                 protein_pos=protein_pos,
@@ -787,18 +787,47 @@ class BFN4SBDDScoreModel(BFNBase):
                 # sample_traj.append((coord_pred, sample_pred,k_hat))
 
         # 5. Compute final output distribution parameters for p_O (x' | θ; t)
-        mu_pos_final, p0_h_final, k_hat_final = self.interdependency_modeling(
+        mu_pos_final_cond, final_lig_v_cond, k_hat = self.interdependency_modeling(
             time=torch.ones((n_nodes, 1)).to(self.device)[batch_ligand],
             protein_pos=protein_pos,
             protein_v=protein_v,
             batch_protein=batch_protein,
-            batch_ligand=batch_ligand,
+            lig_embedding=lig_emb,
+            embedding_mask=embedding_mask,
             theta_h_t=theta_h_t,
             mu_pos_t=mu_pos_t,
-            # mu_charge_t=mu_charge_t,
+            batch_ligand=batch_ligand,
             gamma_coord=1 - self.sigma1_coord**2,  # γ(t) = 1 − (σ1**2) ** t
-            # gamma_charge=1 - self.sigma1_charges**2,
-        )
+        )  # [N, 3], [N, K], [?]
+
+        lig_emb = torch.zeros(lig_emb.shape, device=lig_emb.device)
+        mu_pos_final_uncond, final_lig_v_uncond, k_hat = self.interdependency_modeling(
+            time=torch.ones((n_nodes, 1)).to(self.device)[batch_ligand],
+            protein_pos=protein_pos,
+            protein_v=protein_v,
+            batch_protein=batch_protein,
+            lig_embedding=lig_emb,
+            embedding_mask=embedding_mask,
+            theta_h_t=theta_h_t,
+            mu_pos_t=mu_pos_t,
+            batch_ligand=batch_ligand,
+            gamma_coord=1 - self.sigma1_coord**2,  # γ(t) = 1 − (σ1**2) ** t
+        )  # [N, 3], [N, K], [?]
+        coord_eps = (1 + self.guide_weight) * (mu_pos_final_cond - mu_pos_t) - self.guide_weight * (
+                mu_pos_final_uncond - mu_pos_t)
+        mu_pos_final = mu_pos_t + coord_eps
+        h_eps = (1 + self.guide_weight) * (final_lig_v_cond - theta_h_t) - self.guide_weight * (
+                final_lig_v_uncond - theta_h_t)
+        final_lig_v = theta_h_t + h_eps
+
+        # take softmax will do
+        if K == 2:
+            p0_1 = torch.sigmoid(final_lig_v)  #
+            p0_2 = 1 - p0_1
+            p0_h_final = torch.cat((p0_1, p0_2), dim=-1)  #
+        else:
+            p0_h_final = torch.nn.functional.softmax(final_lig_v, dim=-1)  # [N_ligand, 13]
+
         # TODO delete the following condition
         if not torch.all(p0_h_final.isfinite()):
             p0_h_final = torch.where(
