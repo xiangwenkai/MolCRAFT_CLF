@@ -111,7 +111,7 @@ class BFN4SBDDScoreModel(BFNBase):
         net_config = Struct(**net_config)
         self.config = net_config
 
-        self.guide_weight = 0.5 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
+        self.guide_weight = 1.8 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
 
         if net_config.name == 'unio2net':
             self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict())
@@ -317,7 +317,7 @@ class BFN4SBDDScoreModel(BFNBase):
         for idx, batch_id in enumerate(batch_ligand):
             batch_groups[batch_id].append(idx)
 
-        mask = np.ones(len(batch_ligand))
+        mask = torch.zeros(len(batch_ligand))
 
         for group_indices in batch_groups.values():
             # if mask
@@ -327,8 +327,8 @@ class BFN4SBDDScoreModel(BFNBase):
                 mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
                 num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
                 mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
-                mask[mask_indices] = 0  # set to 0
-        return torch.tensor(mask)
+                mask[mask_indices] = 1  # set to 0
+        return mask
 
     def loss_one_step(
         self,
