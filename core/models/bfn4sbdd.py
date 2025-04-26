@@ -588,7 +588,7 @@ class BFN4SBDDScoreModel(BFNBase):
             # )
 
             embedding_mask = self.get_emb_mask(batch_ligand)
-            coord_pred_cond, final_lig_v_cond, k_hat_cond = self.interdependency_modeling(
+            coord_pred_cond, final_lig_v_cond, k_hat = self.interdependency_modeling(
                 time=t,
                 protein_pos=protein_pos,
                 protein_v=protein_v,
@@ -602,7 +602,7 @@ class BFN4SBDDScoreModel(BFNBase):
             )  # [N, 3], [N, K], [?]
 
             lig_emb = torch.zeros(lig_emb.shape, device=lig_emb.device)
-            coord_pred_uncond, final_lig_v_uncond, k_hat_uncond = self.interdependency_modeling(
+            coord_pred_uncond, final_lig_v_uncond, k_hat = self.interdependency_modeling(
                 time=t,
                 protein_pos=protein_pos,
                 protein_v=protein_v,
