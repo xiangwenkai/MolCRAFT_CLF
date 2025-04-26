@@ -446,8 +446,10 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 e_w = None
 
             for l_idx, layer in enumerate(self.base_block):
-                h = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
-                x = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                h = h + h_g
+                x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                x = x + x_g
                 h, x = layer[0](h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
             all_x.append(x)
             all_h.append(h)
