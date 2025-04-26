@@ -614,12 +614,12 @@ class BFN4SBDDScoreModel(BFNBase):
                 batch_ligand=batch_ligand,
                 gamma_coord=gamma_coord,
             )  # [N, 3], [N, K], [?]
-            coord_eps = (1 + self.guide_weight) * (coord_pred_cond - mu_coord) - self.guide_weight * (
-                        coord_pred_uncond - mu_coord)
-            coord_pred = mu_coord + coord_eps
-            h_eps = (1 + self.guide_weight) * (final_lig_v_cond - theta) - self.guide_weight * (
-                        final_lig_v_uncond - theta)
-            final_lig_v = theta + h_eps
+            coord_eps = (1 + self.guide_weight) * (coord_pred_cond - mu_pos_t) - self.guide_weight * (
+                        coord_pred_uncond - mu_pos_t)
+            coord_pred = mu_pos_t + coord_eps
+            h_eps = (1 + self.guide_weight) * (final_lig_v_cond - theta_h_t) - self.guide_weight * (
+                        final_lig_v_uncond - theta_h_t)
+            final_lig_v = theta_h_t + h_eps
 
             # take softmax will do
             if K == 2:
