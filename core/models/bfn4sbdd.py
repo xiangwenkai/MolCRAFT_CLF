@@ -111,7 +111,7 @@ class BFN4SBDDScoreModel(BFNBase):
         net_config = Struct(**net_config)
         self.config = net_config
 
-        self.guide_weight = 0.1 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
+        self.guide_weight = 0.5 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
 
         if net_config.name == 'unio2net':
             self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict())
@@ -595,8 +595,8 @@ class BFN4SBDDScoreModel(BFNBase):
                 batch_protein=batch_protein,
                 lig_embedding=lig_emb,
                 embedding_mask=embedding_mask,
-                theta_h_t=theta,
-                mu_pos_t=mu_coord,
+                theta_h_t=theta_h_t,
+                mu_pos_t=mu_pos_t,
                 batch_ligand=batch_ligand,
                 gamma_coord=gamma_coord,
             )  # [N, 3], [N, K], [?]
@@ -609,8 +609,8 @@ class BFN4SBDDScoreModel(BFNBase):
                 batch_protein=batch_protein,
                 lig_embedding=lig_emb,
                 embedding_mask=embedding_mask,
-                theta_h_t=theta,
-                mu_pos_t=mu_coord,
+                theta_h_t=theta_h_t,
+                mu_pos_t=mu_pos_t,
                 batch_ligand=batch_ligand,
                 gamma_coord=gamma_coord,
             )  # [N, 3], [N, K], [?]
