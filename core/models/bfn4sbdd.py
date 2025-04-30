@@ -326,6 +326,8 @@ class BFN4SBDDScoreModel(BFNBase):
             if np.random.rand() < 0.6 and mask_indexes:
                 mask_indices = random.choice(mask_indexes[group_id])
                 mask_indices = [x + cum for x in mask_indices]
+                print(f"mask_indexes: {mask_indexes}")
+                print(f"mask_indices: {mask_indices}")
                 mask[mask_indices] = 1
             else:
                 if np.random.rand() < 0.5:
