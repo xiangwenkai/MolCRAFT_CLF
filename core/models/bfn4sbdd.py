@@ -323,7 +323,7 @@ class BFN4SBDDScoreModel(BFNBase):
         for group_id, group_indices in batch_groups.items():
             num_elements = len(group_indices)
             # if mask
-            if np.random.rand() < 0.6 and mask_indexes:
+            if np.random.rand() < 0.6 and mask_indexes[group_id]:
                 mask_indices = random.choice(mask_indexes[group_id])
                 mask_indices_adjust = [x + cum for x in mask_indices]
                 mask[mask_indices_adjust] = 1
