@@ -4,7 +4,7 @@ import argparse
 import json
 import time
 import numpy as np
-from unimol_tools import UniMolRepr
+# from unimol_tools import UniMolRepr
 import pandas as pd
 import re
 import os
@@ -253,7 +253,7 @@ class Mask():
 
 
 if __name__ == "__main__":
-    db = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final.lmdb', map_size=10 * (1024 * 1024 * 1024),
+    db = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_emb.lmdb', map_size=10 * (1024 * 1024 * 1024),
                    create=False,subdir=False,readonly=True,lock=False,readahead=False,meminit=False)
     with db.begin() as txn:
         keys = list(txn.cursor().iternext(values=False))
@@ -277,21 +277,35 @@ if __name__ == "__main__":
         protein_path = os.path.join(crossdock_path, protein_filename)
         ligand_path = os.path.join(crossdock_path, ligand_filename)
 
+        # mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
+        # try:
+        #     mol = Chem.RemoveHs(mol)
+        # except:
+        #     pass
+        # if data['ligand_element'].size()[0] != mol.GetNumAtoms():
+        #     fail_idxes.append(idx)
+
         try:
             mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
+            try:
+                mol = Chem.RemoveHs(mol)
+            except:
+                pass
             # Chem.SanitizeMol(mol)
-            mol.UpdatePropertyCache(strict=False)
+            # mol.UpdatePropertyCache(strict=False)
             mask = Mask(mol)
             mask_idxes = mask.get_all_mask()
+            # num_nodes = mol.GetNumAtoms()
 
             # mol = Chem.RemoveHs(mol)
             # smi = Chem.MolToSmiles(mol)
             # name = smi
-            # num_nodes = mol.GetNumAtoms()
         except:
             print(f"{idx} failed")
             mask_idxes = []
             fail_idxes.append(idx)
+        if idx in [136380, 136616, 136619, 136619, 141229, 141259, 141265, 141305, 141310, 141315, 141334, 141360, 141365, 141366, 141397, 141398, 141404, 141415, 141424, 141441, 141501, 141553, 141578, 156269, 157696, 157893, 158158, 159261]:
+            mask_idxes = []
         data['mask_indexes'] = mask_idxes
         txn_new.put(
             key=str(idx).encode(),

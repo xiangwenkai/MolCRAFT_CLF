@@ -51,6 +51,10 @@ for idx in range(len(keys)):
 
     try:
         mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
+        try:
+            mol = Chem.RemoveHs(mol)
+        except:
+            pass
         # Chem.SanitizeMol(mol)
         mol.UpdatePropertyCache(strict=False)
         atoms = []
@@ -96,7 +100,10 @@ for i in range(0, k+1):
         # print(np.array(unimol_repr['atomic_reprs']).shape)
         key = keys[idx]
         data = pickle.loads(db.begin().get(key))
-        data['lig_emb'] = torch.tensor(unimol_repr['atomic_reprs'][j])
+        if idx in [136380, 136616, 136619, 136619, 141229, 141259, 141265, 141305, 141310, 141315, 141334, 141360, 141365, 141366, 141397, 141398, 141404, 141415, 141424, 141441, 141501, 141553, 141578, 156269, 157696, 157893, 158158, 159261]:
+            data['lig_emb'] = torch.zeros(unimol_repr['atomic_reprs'][j].shape)
+        else:
+            data['lig_emb'] = torch.tensor(unimol_repr['atomic_reprs'][j])
         txn_new.put(
             key=str(idx).encode(),
             value=pickle.dumps(data)

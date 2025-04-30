@@ -315,11 +315,10 @@ class BFN4SBDDScoreModel(BFNBase):
 
     def get_emb_mask(self, batch_ligand, mask_indexes):
         batch_groups = defaultdict(list)
-        for idx, batch_id in enumerate(batch_ligand):
+        for idx, batch_id in enumerate(batch_ligand.tolist()):
             batch_groups[batch_id].append(idx)
 
         mask = torch.zeros(len(batch_ligand))
-        # print(batch_ligand)
         cum = 0
         for group_id, group_indices in batch_groups.items():
             num_elements = len(group_indices)
@@ -336,7 +335,7 @@ class BFN4SBDDScoreModel(BFNBase):
                     mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
                     mask[mask_indices] = 1
             cum += num_elements
-            print(f"cum: {cum}")
+            # print(f"cum: {cum}, num_elements: {num_elements}")
         return mask
 
     def loss_one_step(
