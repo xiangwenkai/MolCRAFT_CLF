@@ -320,10 +320,12 @@ class BFN4SBDDScoreModel(BFNBase):
 
         mask = torch.zeros(len(batch_ligand))
 
-        for group_indices in batch_groups.values():
+        cum = 0
+        for group_id, group_indices in batch_groups.items():
             # if mask
             if np.random.rand() < 0.6 and mask_indexes:
-                mask_indices = random.choice(mask_indexes)
+                mask_indices = random.choice(mask_indexes[group_id])
+                mask_indices = [x + cum for x in mask_indices]
                 mask[mask_indices] = 1
             else:
                 if np.random.rand() < 0.5:
@@ -333,6 +335,7 @@ class BFN4SBDDScoreModel(BFNBase):
                     num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
                     mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
                     mask[mask_indices] = 1
+            cum += len(group_indices)
         return mask
 
     def loss_one_step(
