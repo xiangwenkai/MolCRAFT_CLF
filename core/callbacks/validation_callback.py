@@ -157,14 +157,15 @@ class ValidationCallback(Callback):
                 batch.protein_pos = batch.protein_pos / pos_normalizer
                 batch.ligand_pos = batch.ligand_pos / pos_normalizer
 
-                protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, ligand_embedding = (
+                protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, ligand_embedding, mask_indexes = (
                     batch.protein_pos, 
                     batch.protein_atom_feature.float(), 
                     batch.protein_element_batch, 
                     batch.ligand_pos,
                     batch.ligand_atom_feature_full, 
                     batch.ligand_element_batch,
-                    batch.lig_emb
+                    batch.lig_emb,
+                    batch.mask_indexes,
                 )
                 # move protein center to origin & ligand correspondingly
                 protein_pos, ligand_pos, offset = center_pos(
@@ -193,7 +194,8 @@ class ValidationCallback(Callback):
                         ligand_pos=ligand_pos,
                         ligand_v=ligand_v,
                         batch_ligand=batch_ligand,
-                        lig_embedding=ligand_embedding
+                        lig_embedding=ligand_embedding,
+                        mask_indexes=mask_indexes
                     )
                     loss = torch.mean(c_loss + pl_module.cfg.train.v_loss_weight * d_loss + discretised_loss)
                     sum_loss += float(loss) * num_graphs
@@ -319,13 +321,15 @@ class VisualizeMolAndTrajCallback(Callback):
             batch.ligand_pos = batch.ligand_pos / pos_normalizer
 
             # prepare batch data
-            protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand = (
+            protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, ligand_embedding, mask_indexes = (
                 batch.protein_pos, 
                 batch.protein_atom_feature.float(), 
                 batch.protein_element_batch, 
                 batch.ligand_pos,
                 batch.ligand_atom_feature_full, 
-                batch.ligand_element_batch
+                batch.ligand_element_batch,
+                batch.ligand_embedding,
+                batch.mask_indexes
             )
 
             # move protein center to origin & ligand correspondingly
@@ -339,6 +343,8 @@ class VisualizeMolAndTrajCallback(Callback):
                 batch_protein=batch_protein,
                 batch_ligand=batch_ligand,
                 n_nodes=num_graphs,
+                lig_emb=ligand_embedding,
+                mask_indexes=mask_indexes,
                 ligand_pos=ligand_pos, # for debug only
                 sample_steps=pl_module.cfg.evaluation.sample_steps,
                 desc='MolVis',
