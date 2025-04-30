@@ -306,13 +306,14 @@ class BFN4SBDDScoreModel(BFNBase):
         ligand_v,
         batch_ligand,
         lig_embedding,
+        mask_indexes,
     ):
         # TODO: implement reconstruction loss (but do we really need it?)
         return self.loss_one_step(
-            t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_embedding
+            t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_embedding, mask_indexes
         )
 
-    def get_emb_mask(self, batch_ligand, mask_prob=0.5):
+    def get_emb_mask(self, batch_ligand, mask_indexes):
         batch_groups = defaultdict(list)
         for idx, batch_id in enumerate(batch_ligand):
             batch_groups[batch_id].append(idx)
@@ -321,13 +322,17 @@ class BFN4SBDDScoreModel(BFNBase):
 
         for group_indices in batch_groups.values():
             # if mask
-            if np.random.rand() < mask_prob:
-                #  mask
-                num_elements = len(group_indices)
-                mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-                num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
-                mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
-                mask[mask_indices] = 1  # set to 0
+            if np.random.rand() < 0.6 and mask_indexes:
+                mask_indices = random.choice(mask_indexes)
+                mask[mask_indices] = 1
+            else:
+                if np.random.rand() < 0.5:
+                    #  mask
+                    num_elements = len(group_indices)
+                    mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                    num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
+                    mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
+                    mask[mask_indices] = 1
         return mask
 
     def loss_one_step(
@@ -340,6 +345,7 @@ class BFN4SBDDScoreModel(BFNBase):
         ligand_v,
         batch_ligand,
         lig_embedding,
+        mask_indexes,
     ):
         K = self.num_classes
 
@@ -372,7 +378,7 @@ class BFN4SBDDScoreModel(BFNBase):
         # 2. Compute output distribution parameters for p_O (x' | θ; t) (x_hat or k^(d) logits)
         # continuous x ~ δ(x − x_hat(θ, t))
         # discrete k^(d) ~ softmax(Ψ^(d)(θ, t))_k
-        embedding_mask = self.get_emb_mask(batch_ligand)
+        embedding_mask = self.get_emb_mask(batch_ligand, mask_indexes)
         coord_pred_cond, final_lig_v_cond, k_hat_cond = self.interdependency_modeling(
             time=t,
             protein_pos=protein_pos,
@@ -500,6 +506,7 @@ class BFN4SBDDScoreModel(BFNBase):
         batch_ligand,
         n_nodes,  # B
         lig_emb,
+        mask_indexes,
         sample_steps=1000,
         desc='',
         ligand_pos=None,  # for debug
@@ -553,7 +560,7 @@ class BFN4SBDDScoreModel(BFNBase):
         # TODO: debug
         mu_pos_t = mu_pos_t[batch_ligand]
         theta_h_t = theta_h_t[batch_ligand]
-        embedding_mask = self.get_emb_mask(batch_ligand)
+        embedding_mask = self.get_emb_mask(batch_ligand, mask_indexes)
         for i in trange(1, sample_steps + 1, desc=f'{desc}'):
             t = torch.ones((n_nodes, 1)).to(self.device) * (i - 1) / sample_steps
             if not self.use_discrete_t and not self.destination_prediction:
