@@ -40,7 +40,7 @@ clf = UniMolRepr(data_type='molecule',
                  model_size='84m', # work when model_name is unimolv2. avaliable: 84m, 164m, 310m, 570m, 1.1B.
                  )
 m = 0
-idxes, fail_idxes, smis = [], [], []
+idxes, all_atoms, all_coordinates, fail_idxes = [], [], [], []
 for idx in range(len(keys)):
     key = keys[idx]
     data = pickle.loads(db.begin().get(key))
@@ -53,31 +53,41 @@ for idx in range(len(keys)):
         mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
         # Chem.SanitizeMol(mol)
         mol.UpdatePropertyCache(strict=False)
+        atoms = []
+        coordinates = []
+        postions = mol.GetConformer().GetPositions()
+        for atom in mol.GetAtoms():
+            sym = atom.GetSymbol()
+            pos = postions[atom.GetIdx()].tolist()
+            atoms.append(sym)
+            coordinates.append(pos)
         # mol = Chem.RemoveHs(mol)
-        smi = Chem.MolToSmiles(mol)
-        name = smi
+        # smi = Chem.MolToSmiles(mol)
+        # name = smi
         # num_nodes = mol.GetNumAtoms()
     except:
         print(f"{idx} failed")
         fail_idxes.append(idx)
         continue
-    if smi == 'C[C@H](N)[C@@H](CCCCCC(=O)O)NC(=O)O[Al](F)(F)F':
-        print(f"{idx} failed")
-        fail_idxes.append(idx)
-        continue
+    # if smi == 'C[C@H](N)[C@@H](CCCCCC(=O)O)NC(=O)O[Al](F)(F)F':
+    #     print(f"{idx} failed")
+    #     fail_idxes.append(idx)
+    #     continue
     idxes.append(idx)
-    smis.append(smi)
+    all_atoms.append(atoms)
+    all_coordinates.append(coordinates)
     m += 1
 print(f"samples:{m}")
 
 
-
-l = len(idxes)
-batch = 1024
+l = len(all_atoms)
+batch = 512
 k = int(l / batch)
 for i in range(0, k+1):
-    smiles_list = smis[i*batch: min((i+1)*batch, l)]
-    unimol_repr = clf.get_repr(smiles_list, return_atomic_reprs=True)
+    atoms_list = all_atoms[i*batch: min((i+1)*batch, l)]
+    coord_list = all_coordinates[i*batch: min((i+1)*batch, l)]
+    input_dict = {'atoms': atoms_list, 'coordinates': coord_list}
+    unimol_repr = clf.get_repr(input_dict, return_atomic_reprs=True)
 
     for j, idx in enumerate(idxes[i*batch: min((i+1)*batch, l)]):
         # CLS token repr
@@ -92,20 +102,5 @@ for i in range(0, k+1):
             value=pickle.dumps(data)
         )
 
-failed_mol = Chem.MolFromSmiles('C[C@H](N)[C@@H](CCCCCC(=O)O)NC(=O)O[Al](F)(F)F', sanitize=False)
-num_nodes = failed_mol.GetNumAtoms()
-for idx in fail_idxes:
-    key = keys[idx]
-    data = pickle.loads(db.begin().get(key))
-    data['lig_emb'] = torch.zeros(size=(num_nodes, 512))
-    txn_new.put(
-        key=str(idx).encode(),
-        value=pickle.dumps(data)
-    )
 txn_new.commit()
-
-
-
-
-
 
