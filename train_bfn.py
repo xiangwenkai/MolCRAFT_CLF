@@ -189,6 +189,7 @@ if __name__ == "__main__":
     parser.add_argument('--scheduler', type=str, default='plateau', choices=['cosine', 'plateau'])
     parser.add_argument('--weight_decay', type=float, default=0)
     parser.add_argument('--max_grad_norm', type=str, default='Q')  # '8.0' for
+    parser.add_argument("--guide_weight", type=float, default=1.8)
 
     # bfn params
     parser.add_argument("--sigma1_coord", type=float, default=0.03)
@@ -212,7 +213,6 @@ if __name__ == "__main__":
     parser.add_argument('--sample_num_atoms', type=str, default='ref', choices=['prior', 'ref'])
     parser.add_argument("--visual_chain", action="store_true")
     parser.add_argument("--docking_mode", type=str, default="vina_score", choices=['vina_score', 'vina_dock'])
-    parser.add_argument("--guide_weight", type=float, default=1.8)
 
     os.system('wandb online')
 
