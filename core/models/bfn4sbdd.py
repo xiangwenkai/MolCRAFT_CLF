@@ -101,7 +101,8 @@ class BFN4SBDDScoreModel(BFNBase):
         center_pos_mode='protein',
         pos_init_mode='zero',
         destination_prediction = False,
-        sampling_strategy = "vanilla"
+        sampling_strategy = "vanilla",
+        guide_weight = 1.8
     ):
         super(BFN4SBDDScoreModel, self).__init__()
         # if include_charge:
@@ -111,7 +112,7 @@ class BFN4SBDDScoreModel(BFNBase):
         net_config = Struct(**net_config)
         self.config = net_config
 
-        self.guide_weight = 1.8 # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
+        self.guide_weight = guide_weight # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
 
         if net_config.name == 'unio2net':
             self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict())
@@ -325,8 +326,13 @@ class BFN4SBDDScoreModel(BFNBase):
             # if mask
             if np.random.rand() < 0.6 and mask_indexes[group_id]:
                 mask_indices = random.choice(mask_indexes[group_id])
-                mask_indices_adjust = [x + cum for x in mask_indices]
-                mask[mask_indices_adjust] = 1
+                if max(mask_indices) >= num_elements - 1:
+                    mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                    num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
+                    mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
+                else:
+                    mask_indices_adjust = [x + cum for x in mask_indices]
+                    mask[mask_indices_adjust] = 1
             else:
                 if np.random.rand() < 0.5:
                     #  mask
