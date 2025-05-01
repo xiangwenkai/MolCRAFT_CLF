@@ -21,7 +21,7 @@ dynamics:
   discrete_steps: !SUB ${discrete_steps}
   destination_prediction: !SUB ${destination_prediction}
   sampling_strategy: !SUB ${sampling_strategy}
-  guide_weight: 1.8
+  guide_weight: !SUB ${guide_weight}
   
   # no_diff_coord: !SUB ${no_diff_coord}
   # charge_discretised_loss: !SUB ${charge_discretised_loss}
