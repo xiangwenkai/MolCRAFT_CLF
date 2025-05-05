@@ -215,6 +215,10 @@ if __name__ == "__main__":
     parser.add_argument("--docking_mode", type=str, default="vina_score", choices=['vina_score', 'vina_dock'])
 
     os.system('wandb online')
+    last_ckpt = True
+    if last_ckpt:
+        last_checkpoint = torch.load('checkpoints/last.ckpt')
+        params = last_checkpoint['state_dict']
 
     _args = parser.parse_args()
     if _args.ckpt_path.lstrip('./') == 'checkpoints/last.ckpt':
@@ -278,6 +282,18 @@ if __name__ == "__main__":
     print(f"The config of this process is:\n{cfg}")
 
     model = SBDDTrainLoop(config=cfg)
+
+    if last_ckpt:
+        for name, param in model.named_parameters():
+            if name in params:
+                param = params[name]
+                param.requires_grad = False
+            elif 'dynamics.unio2net.base_block' in name and name[31] == '0':
+                map_name = name.replace(name[28:33], name[28:31])
+                param = params[map_name]
+                param.requires_grad = False
+            else:
+                pass
 
     trainer = pl.Trainer(
         # deterministic=True,
