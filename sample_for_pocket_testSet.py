@@ -6,7 +6,7 @@ import shutil
 
 import pandas as pd
 from tqdm import tqdm
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # import torch
 
 # from sklearn.metrics import roc_auc_score
