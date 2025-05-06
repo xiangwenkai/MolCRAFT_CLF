@@ -314,7 +314,7 @@ class BFN4SBDDScoreModel(BFNBase):
             t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_embedding, mask_indexes
         )
 
-    def get_emb_mask(self, batch_ligand, mask_indexes):
+    def get_emb_mask(self, batch_ligand, mask_indexes, mask_strategy='random'):
         batch_groups = defaultdict(list)
         for idx, batch_id in enumerate(batch_ligand.tolist()):
             batch_groups[batch_id].append(idx)
@@ -323,23 +323,27 @@ class BFN4SBDDScoreModel(BFNBase):
         cum = 0
         for group_id, group_indices in batch_groups.items():
             num_elements = len(group_indices)
-            # if mask
-            if np.random.rand() < 0.6 and mask_indexes[group_id]:
+            if mask_strategy != 'random':
                 mask_indices = random.choice(mask_indexes[group_id])
-                if max(mask_indices) >= num_elements - 1:
-                    mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-                    num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
-                    mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
-                else:
-                    mask_indices_adjust = [x + cum for x in mask_indices]
-                    mask[mask_indices_adjust] = 1
+                mask_indices_adjust = [x + cum for x in mask_indices]
+                mask[mask_indices_adjust] = 1
             else:
-                if np.random.rand() < 0.5:
-                    #  mask
-                    mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-                    num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
-                    mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
-                    mask[mask_indices] = 1
+                if np.random.rand() < 0.6 and mask_indexes[group_id]:
+                    mask_indices = random.choice(mask_indexes[group_id])
+                    if max(mask_indices) >= num_elements - 1:
+                        mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                        num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
+                        mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
+                    else:
+                        mask_indices_adjust = [x + cum for x in mask_indices]
+                        mask[mask_indices_adjust] = 1
+                else:
+                    if np.random.rand() < 0.5:
+                        #  mask
+                        mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                        num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
+                        mask_indices = np.random.choice(group_indices, num_to_mask, replace=False)  # random mask position
+                        mask[mask_indices] = 1
             cum += num_elements
             # print(f"cum: {cum}, num_elements: {num_elements}")
         return mask
@@ -519,6 +523,7 @@ class BFN4SBDDScoreModel(BFNBase):
         sample_steps=1000,
         desc='',
         ligand_pos=None,  # for debug
+        mask_strategy='random'
     ):
         """
         The function implements a sampling procedure for BFN
@@ -569,7 +574,7 @@ class BFN4SBDDScoreModel(BFNBase):
         # TODO: debug
         mu_pos_t = mu_pos_t[batch_ligand]
         theta_h_t = theta_h_t[batch_ligand]
-        embedding_mask = self.get_emb_mask(batch_ligand, mask_indexes)
+        embedding_mask = self.get_emb_mask(batch_ligand, mask_indexes, mask_strategy=mask_strategy)
         for i in trange(1, sample_steps + 1, desc=f'{desc}'):
             t = torch.ones((n_nodes, 1)).to(self.device) * (i - 1) / sample_steps
             if not self.use_discrete_t and not self.destination_prediction:
