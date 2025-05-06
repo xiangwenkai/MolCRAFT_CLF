@@ -324,7 +324,9 @@ class NpEncoder(json.JSONEncoder):
 
 if __name__ == '__main__':
     # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --output_file res/res_frag_last_v2.csv
-    #
+    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --output_file res/res_link_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --output_file res/res_scaffold_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --output_file res/res_denovo_last_v2.csv
     parser = argparse.ArgumentParser()
     parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo'])
     parser.add_argument('--output_file', type=str, default='res.csv')
@@ -360,10 +362,13 @@ if __name__ == '__main__':
                 guide_index = mask.get_link_mask() + mask.get_single_link_mask()
             elif scenario == 'scaffold':
                 guide_index = mask.get_scaffold_side_chain_mask()
-            elif scenario == 'link':
+            elif scenario == 'denovo':
                 guide_index = [[k for k in range(num_nodes)]]
         except:
             print(f"process {file_name} fail")
+            continue
+        if not guide_index:
+            print(f"index is none")
             continue
         call(protein_path, ligand_path, emb_info, guide_index)
 
