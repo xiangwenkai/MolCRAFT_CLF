@@ -13,6 +13,7 @@ from tqdm import tqdm
 from torch_geometric.loader import DataLoader
 from torch_geometric.transforms import Compose
 from prepare_data_mask import Mask
+import argparse
 
 import torch
 import random
@@ -322,10 +323,18 @@ class NpEncoder(json.JSONEncoder):
 
 
 if __name__ == '__main__':
+    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --output_file res/res_frag_last_v2.csv
+    #
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo'])
+    parser.add_argument('--output_file', type=str, default='res.csv')
+
+    args = parser.parse_args()
+
     if '/data4/wenkai/anaconda3/envs/molcraft/bin:' not in os.environ['PATH']:
         os.environ['PATH'] = '/data4/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
 
-    scenario = 'frag'  # frag, link, scaffold, denovo
+    scenario = args.scenario  # frag, link, scaffold, denovo
 
     path = '/data4/wenkai/MolCRAFT_CLF/data/test_set'
     file_names = os.listdir(path)
@@ -386,6 +395,6 @@ if __name__ == '__main__':
     # res.to_csv('res/gradient_endback_res.csv', index=False)
     # res.to_csv('res/base_res.csv', index=False)
     # res.to_csv('res/noise_diff3_res.csv', index=False)
-    res.to_csv('res/res_frag_last_v2.csv', index=False)
+    res.to_csv(args.output_file, index=False)
     # print(json.dumps(metrics, indent=4, cls=NpEncoder))
 
