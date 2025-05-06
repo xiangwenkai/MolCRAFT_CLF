@@ -12,6 +12,7 @@ from tqdm import tqdm
 # from sklearn.metrics import roc_auc_score
 from torch_geometric.loader import DataLoader
 from torch_geometric.transforms import Compose
+from prepare_data_mask import Mask
 
 import torch
 import random
@@ -323,6 +324,9 @@ class NpEncoder(json.JSONEncoder):
 if __name__ == '__main__':
     if '/data4/wenkai/anaconda3/envs/molcraft/bin:' not in os.environ['PATH']:
         os.environ['PATH'] = '/data4/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
+
+    scenario = 'frag'  # frag, link, scaffold, denovo
+
     path = '/data4/wenkai/MolCRAFT_CLF/data/test_set'
     file_names = os.listdir(path)
     qeds, sas, lipinskis, logps, vina_scores, vina_mins, vina_docks = [], [], [], [], [], [], []
@@ -335,7 +339,23 @@ if __name__ == '__main__':
         ligand_path = os.path.join(path, file_name, sdf_name)
         emb_info = torch.load(os.path.join(path, file_name, 'emb_info.pt'))
 
-        guide_index = [[0,1,2,3,4,5,6,7,8]]
+        # guide_index = [[0,1,2,3,4,5,6,7,8]]
+        try:
+            mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
+            mol = Chem.RemoveHs(mol)
+            num_nodes = mol.GetNumAtoms()
+            mask = Mask(mol)
+            if scenario == 'frag':
+                guide_index = mask.get_frag_mask()
+            elif scenario == 'link':
+                guide_index = mask.get_link_mask() + mask.get_single_link_mask()
+            elif scenario == 'scaffold':
+                guide_index = mask.get_scaffold_side_chain_mask()
+            elif scenario == 'link':
+                guide_index = [[k for k in range(num_nodes)]]
+        except:
+            print(f"process {file_name} fail")
+            continue
         call(protein_path, ligand_path, emb_info, guide_index)
 
         files = os.listdir('output')
@@ -366,6 +386,6 @@ if __name__ == '__main__':
     # res.to_csv('res/gradient_endback_res.csv', index=False)
     # res.to_csv('res/base_res.csv', index=False)
     # res.to_csv('res/noise_diff3_res.csv', index=False)
-    res.to_csv('res/no_nci_diff3_res.csv', index=False)
+    res.to_csv('res/res_frag_last_v2.csv', index=False)
     # print(json.dumps(metrics, indent=4, cls=NpEncoder))
 
