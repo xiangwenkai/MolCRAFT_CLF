@@ -223,12 +223,12 @@ class Metrics:
             vina_task = VinaDockingTask.from_generated_mol(mol, ligand_filename=self.ref_ligand_fn, protein_root='./')
             score_only_results = vina_task.run(mode='score_only', exhaustiveness=self.exhaustiveness)
             minimize_results = vina_task.run(mode='minimize', exhaustiveness=self.exhaustiveness)
-            # docking_results = vina_task.run(mode='dock', exhaustiveness=self.exhaustiveness)
+            docking_results = vina_task.run(mode='dock', exhaustiveness=self.exhaustiveness)
 
             chem_results['vina_score'] = score_only_results[0]['affinity']
             chem_results['vina_minimize'] = minimize_results[0]['affinity']
-            # chem_results['vina_dock'] = docking_results[0]['affinity']
-            # chem_results['vina_dock_pose'] = docking_results[0]['pose']
+            chem_results['vina_dock'] = docking_results[0]['affinity']
+            chem_results['vina_dock_pose'] = docking_results[0]['pose']
             return chem_results
         except Exception as e:
             print("vina score failed")
@@ -302,8 +302,8 @@ class Metrics:
         mol = Chem.SDMolSupplier(self.ligand_fn, removeHs=False)[0]
        
         chem_results = self.vina_dock(mol)
-        # pose_check_results = self.pose_check(mol)
-        # chem_results.update(pose_check_results)
+        pose_check_results = self.pose_check(mol)
+        chem_results.update(pose_check_results)
 
         return chem_results
 
@@ -352,7 +352,7 @@ if __name__ == '__main__':
             # logp.append(round(metrics['logp'], 3))
             vina_score.append(round(metrics['vina_score'], 3))
             vina_min.append(round(metrics['vina_minimize'], 3))
-            # vina_dock.append(round(metrics['vina_dock'], 3))
+            vina_dock.append(round(metrics['vina_dock'], 3))
             # clash.append(metrics['clash'])
         print(f"{file_idx}. Avg metrics:\nQED: {sum(qed)/n}\nSA: {sum(sa)/n}\nVina Score: {sum(vina_score)/n}\nVina Min: {sum(vina_min)/n}\nVina Dock: {sum(vina_dock)/n}\nLipinski: {sum(lipinski)/n}\nLogp: {sum(logp)/n}")
         qeds.append(sum(qed)/n)
