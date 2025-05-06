@@ -326,12 +326,13 @@ class NpEncoder(json.JSONEncoder):
 
 
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --output_file res/res_frag_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --output_file res/res_link_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --output_file res/res_scaffold_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --output_file res/res_denovo_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv
     parser = argparse.ArgumentParser()
     parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo'])
+    parser.add_argument('--data_path', type=str, default='/data4/wenkai/MolCRAFT_CLF/data/test_set')
     parser.add_argument('--output_file', type=str, default='res.csv')
 
     args = parser.parse_args()
@@ -341,7 +342,7 @@ if __name__ == '__main__':
 
     scenario = args.scenario  # frag, link, scaffold, denovo
 
-    path = '/data4/wenkai/MolCRAFT_CLF/data/test_set'
+    path = args.data_path
     file_names = os.listdir(path)
     qeds, sas, lipinskis, logps, vina_scores, vina_mins, vina_docks = [], [], [], [], [], [], []
     for file_idx, file_name in enumerate(file_names):
