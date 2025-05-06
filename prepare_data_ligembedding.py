@@ -111,3 +111,46 @@ for i in range(0, k+1):
 
 txn_new.commit()
 
+
+
+
+
+
+# 为crossdock test set生成embedding信息，用于molcraft模型推理测试
+clf = UniMolRepr(data_type='molecule',
+                 remove_hs=True,
+                 model_name='unimolv1', # avaliable: unimolv1, unimolv2
+                 model_size='84m', # work when model_name is unimolv2. avaliable: 84m, 164m, 310m, 570m, 1.1B.
+                 )
+path = '/data4/wenkai/MolCRAFT_CLF/data/test_set'
+file_names = os.listdir(path)
+for file_name in file_names:
+    names = os.listdir(os.path.join(path, file_name))
+    pdb_name = [x for x in names if 'pdb' in x and 'pdbqt' not in x][0]
+    sdf_name = [x for x in names if 'sdf' in x and 'pdbqt' not in x][0]
+    protein_path = os.path.join(path, file_name, pdb_name)
+    ligand_path = os.path.join(path, file_name, sdf_name)
+
+    try:
+        mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
+        mol = Chem.RemoveHs(mol)
+        # Chem.SanitizeMol(mol)
+        mol.UpdatePropertyCache(strict=False)
+        atoms = []
+        coordinates = []
+        postions = mol.GetConformer().GetPositions()
+        for atom in mol.GetAtoms():
+            sym = atom.GetSymbol()
+            pos = postions[atom.GetIdx()].tolist()
+            atoms.append(sym)
+            coordinates.append(pos)
+        input_dict = {'atoms': [atoms], 'coordinates': [coordinates]}
+        unimol_repr = clf.get_repr(input_dict, return_atomic_reprs=True)
+
+        emb_info = torch.tensor(unimol_repr['atomic_reprs'][0])
+        emb_path = os.path.join(path, file_name, 'emb_info.pt')
+        torch.save(emb_info, emb_path)
+    except:
+        print(f"error {file_name}")
+
+

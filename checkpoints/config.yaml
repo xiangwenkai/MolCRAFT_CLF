@@ -77,10 +77,11 @@ dynamics:
   time_emb_dim: 1
   time_emb_mode: simple
   use_discrete_t: true
+  guide_weight: -0.5
 empty_folder: false
 evaluation:
   batch_size: 100
-  ckpt_path: ./checkpoints/last.ckpt
+  ckpt_path: ./checkpoints/last-v2.ckpt
   docking_config:
     exhaustiveness: 16
     mode: vina_score
