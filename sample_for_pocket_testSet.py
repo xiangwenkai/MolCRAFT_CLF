@@ -370,7 +370,7 @@ if __name__ == '__main__':
         except:
             print(f"process {file_name} fail")
             continue
-        if scenario =='denovo' and not guide_index:
+        if scenario !='denovo' and not guide_index:
             print(f"index is none")
             continue
         try:
