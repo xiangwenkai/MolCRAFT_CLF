@@ -304,8 +304,11 @@ class Metrics:
         mol = Chem.SDMolSupplier(self.ligand_fn, removeHs=False)[0]
        
         chem_results = self.vina_dock(mol)
-        pose_check_results = self.pose_check(mol)
-        chem_results.update(pose_check_results)
+        try:
+            pose_check_results = self.pose_check(mol)
+            chem_results.update(pose_check_results)
+        except:
+            print(f"pose check fail !!!!!!!")
 
         return chem_results
 
@@ -363,15 +366,18 @@ if __name__ == '__main__':
             elif scenario == 'scaffold':
                 guide_index = mask.get_scaffold_side_chain_mask()
             elif scenario == 'denovo':
-                guide_index = [[k for k in range(num_nodes)]]
+                guide_index = []
         except:
             print(f"process {file_name} fail")
             continue
-        if not guide_index:
+        if scenario =='denovo' and not guide_index:
             print(f"index is none")
             continue
-        call(protein_path, ligand_path, emb_info, guide_index)
-
+        try:
+            call(protein_path, ligand_path, emb_info, guide_index)
+        except:
+            print(f"fail to generate for {file_name}")
+            continue
         files = os.listdir('output')
         n = len(files)
         if n == 0:
