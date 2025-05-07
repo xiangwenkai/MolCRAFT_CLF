@@ -214,6 +214,11 @@ if __name__ == "__main__":
     parser.add_argument("--visual_chain", action="store_true")
     parser.add_argument("--docking_mode", type=str, default="vina_score", choices=['vina_score', 'vina_dock'])
 
+    if '/data4/wenkai/anaconda3/envs/molcraft/bin:' not in os.environ['PATH']:
+        os.environ['PATH'] = '/data4/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
+    if '/data/wenkai/anaconda3/envs/molcraft/bin:' not in os.environ['PATH']:
+        os.environ['PATH'] = '/data/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
+
     os.system('wandb online')
     last_ckpt = True
     if last_ckpt:

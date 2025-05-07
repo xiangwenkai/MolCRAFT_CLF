@@ -342,6 +342,8 @@ if __name__ == '__main__':
 
     if '/data4/wenkai/anaconda3/envs/molcraft/bin:' not in os.environ['PATH']:
         os.environ['PATH'] = '/data4/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
+    if '/data/wenkai/anaconda3/envs/molcraft/bin:' not in os.environ['PATH']:
+        os.environ['PATH'] = '/data/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
 
     scenario = args.scenario  # frag, link, scaffold, denovo
 
