@@ -51,7 +51,8 @@ LAST_PROTEIN_FN = None
 
 
 class DockingTestCallback(Callback):
-    def __init__(self, dataset, atom_enc_mode, atom_decoder, atom_type_one_hot, single_bond, docking_config) -> None:
+    def __init__(self, dataset, atom_enc_mode, atom_decoder, atom_type_one_hot, single_bond, docking_config,
+    OUT_DIR=None) -> None:
         super().__init__()
         self.dataset = dataset
         self.atom_enc_mode = atom_enc_mode
@@ -60,6 +61,7 @@ class DockingTestCallback(Callback):
         self.type_one_hot = atom_type_one_hot
         self.docking_config = docking_config
         self.outputs = []
+        self.OUT_DIR = OUT_DIR
     
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         super().setup(trainer, pl_module, stage)
@@ -101,9 +103,9 @@ class DockingTestCallback(Callback):
             shutil.rmtree(path)
         os.makedirs(path, exist_ok=True)
 
-        if os.path.exists(OUT_DIR):
-            shutil.rmtree(OUT_DIR)
-        os.makedirs(OUT_DIR, exist_ok=True)
+        if os.path.exists(self.OUT_DIR):
+            shutil.rmtree(self.OUT_DIR)
+        os.makedirs(self.OUT_DIR, exist_ok=True)
 
         for idx, res in enumerate(tqdm(results, desc="Chem eval")):
             
@@ -131,7 +133,7 @@ class DockingTestCallback(Callback):
     
             # print(json.dumps(chem_results, indent=4, cls=NpEncoder))
 
-            out_fn = os.path.join(OUT_DIR, f'{idx}.sdf')
+            out_fn = os.path.join(self.OUT_DIR, f'{idx}.sdf')
             with Chem.SDWriter(out_fn) as w:
                 w.write(mol)
 

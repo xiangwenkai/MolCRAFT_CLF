@@ -143,7 +143,8 @@ def on_test_epoch_end(outputs):
 
 def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='./checkpoints/last.ckpt',
          num_samples=10, sample_steps=100, sample_num_atoms='ref',
-         beta1=1.5, sigma1_coord=0.03, sampling_strategy='end_back', seed=1234):
+         beta1=1.5, sigma1_coord=0.03, sampling_strategy='end_back', seed=1234,
+         args=None, file_name=None):
     
     cfg = Config('./checkpoints/config.yaml')
     seed_everything(cfg.seed)
@@ -199,6 +200,7 @@ def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='./checkpoints/
                 atom_type_one_hot=False,
                 single_bond=True,
                 docking_config=cfg.evaluation.docking_config,
+                OUT_DIR='./' + args.sdf_folder_path + '/' + file_name
             ),
         ],
     )
@@ -334,6 +336,7 @@ if __name__ == '__main__':
     parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo'])
     parser.add_argument('--data_path', type=str, default='/data4/wenkai/MolCRAFT_CLF/data/test_set')
     parser.add_argument('--output_file', type=str, default='res.csv')
+    parser.add_argument('--sdf_folder_path', type=str, default='output') # 默认同config.yaml中的test_outputs_dir
 
     args = parser.parse_args()
 
@@ -363,11 +366,14 @@ if __name__ == '__main__':
             if scenario == 'frag':
                 guide_index = mask.get_frag_mask()
             elif scenario == 'link':
-                guide_index = mask.get_link_mask() + mask.get_single_link_mask()
+                guide_index = [mask.get_link_mask(), mask.get_single_link_mask()]
             elif scenario == 'scaffold':
                 guide_index = mask.get_scaffold_side_chain_mask()
             elif scenario == 'denovo':
                 guide_index = [[]]
+
+            print("guide_index:", guide_index)
+
         except:
             print(f"process {file_name} fail")
             continue
@@ -375,7 +381,7 @@ if __name__ == '__main__':
             print(f"index is none")
             continue
         try:
-            call(protein_path, ligand_path, emb_info, guide_index)
+            call(protein_path, ligand_path, emb_info, guide_index, args=args, file_name=file_name)
         except:
             print(f"fail to generate for {file_name}")
             continue
