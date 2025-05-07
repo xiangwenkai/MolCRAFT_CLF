@@ -8,6 +8,7 @@ logging_level: !SUB ${logging_level}
 seed: !SUB ${seed}
 test_only: !SUB ${test_only}
 empty_folder: !SUB ${empty_folder}
+incremental: !SUB ${incremental}
 
 
 #model
