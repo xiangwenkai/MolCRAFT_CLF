@@ -240,23 +240,24 @@ class NpEncoder(json.JSONEncoder):
 
 
 
-split_path = f'/data/wenkai/MolCRAFT_CLF/data/crossdocked_pocket10_pose_split.pt'
+split_path = f'/data4/wenkai/MolCRAFT_CLF/data/crossdocked_pocket10_pose_split.pt'
 split = torch.load(split_path)
 train_ids, test_ids = split['train'], split['test']
 
 
 crossdock_path = '/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10'
 
-db = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_emb.lmdb', map_size=10 * (1024 * 1024 * 1024),
+db = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_origin.lmdb', map_size=10 * (1024 * 1024 * 1024),
                    create=False,subdir=False,readonly=True,lock=False,readahead=False,meminit=False)
 with db.begin() as txn:
     keys = list(txn.cursor().iternext(values=False))
 for scenario in ['frag', 'link', 'scaffold', 'denovo']:
-    db_new = lmdb.open(f'/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_test{scenario}',map_size=1 * (1024 * 1024 * 1024),  #
+    db_new = lmdb.open(f'/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_test{scenario}.lmdb',map_size=1 * (1024 * 1024 * 1024),  #
                            create=False,subdir=False,readonly=False,lock=False,readahead=False,meminit=False)
     txn_new = db_new.begin(write=True, buffers=True)
-    for idx in range(len(test_ids)):
-        key = keys[idx]
+    for key in keys:
+        if int(key) not in set(test_ids):
+            continue
         data = pickle.loads(db.begin().get(key))
         protein_filename = data['protein_filename']
         ligand_filename = data['ligand_filename']
@@ -287,30 +288,30 @@ for scenario in ['frag', 'link', 'scaffold', 'denovo']:
             elif scenario == 'scaffold':
                 mask_idxes = mask.get_scaffold_side_chain_mask()
             elif scenario == 'denovo':
-                mask_idxes = [[]]
+                mask_idxes = []
         except:
-            print(f"{idx} failed")
+            print(f"{key} failed")
             mask_idxes = []
         data['mask_indexes'] = mask_idxes
         txn_new.put(
-            key=str(idx).encode(),
+            key=key,
             value=pickle.dumps(data)
         )
     txn_new.commit()
 
 
 for scenario in ['frag', 'link', 'scaffold', 'denovo']:
-    raw_dataset = PocketLigandPairDataset(f"/data/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10", None, f'test{scenario}')
-    test_data = _transform_subset(test_ids)
+    raw_dataset = PocketLigandPairDataset(f"/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10", None, f'test{scenario}')
+    test_data = _transform_subset([i for i in range(len(raw_dataset))])
     torch.save({
         'test': test_data,
         'protein_atom_feature_dim': 27,
         'ligand_atom_feature_dim': 13,
-    }, f'/data/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_transformed_test{scenario}.pt')
+    }, f'/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_transformed_test{scenario}.pt')
 
 
 for scenario in ['frag', 'link', 'scaffold', 'denovo']:
-    test_data = torch.load(f'/data/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_transformed_test{scenario}.pt')
+    test_data = torch.load(f'/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_transformed_test{scenario}.pt')
     test_loader = DataLoader(
         test_data,
         batch_size=100,
