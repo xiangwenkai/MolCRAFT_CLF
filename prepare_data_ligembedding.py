@@ -41,8 +41,7 @@ clf = UniMolRepr(data_type='molecule',
                  )
 m = 0
 idxes, all_atoms, all_coordinates, fail_idxes = [], [], [], []
-for idx in range(len(keys)):
-    key = keys[idx]
+for key in keys:
     data = pickle.loads(db.begin().get(key))
     protein_filename = data['protein_filename']
     ligand_filename = data['ligand_filename']
@@ -70,14 +69,14 @@ for idx in range(len(keys)):
         # name = smi
         # num_nodes = mol.GetNumAtoms()
     except:
-        print(f"{idx} failed")
-        fail_idxes.append(idx)
+        print(f"{key} failed")
+        fail_idxes.append(key)
         continue
     # if smi == 'C[C@H](N)[C@@H](CCCCCC(=O)O)NC(=O)O[Al](F)(F)F':
     #     print(f"{idx} failed")
     #     fail_idxes.append(idx)
     #     continue
-    idxes.append(idx)
+    idxes.append(key)
     all_atoms.append(atoms)
     all_coordinates.append(coordinates)
     m += 1
@@ -85,7 +84,7 @@ print(f"samples:{m}")
 
 
 l = len(all_atoms)
-batch = 512
+batch = 1024
 k = int(l / batch)
 for i in range(0, k+1):
     atoms_list = all_atoms[i*batch: min((i+1)*batch, l)]
@@ -93,19 +92,18 @@ for i in range(0, k+1):
     input_dict = {'atoms': atoms_list, 'coordinates': coord_list}
     unimol_repr = clf.get_repr(input_dict, return_atomic_reprs=True)
 
-    for j, idx in enumerate(idxes[i*batch: min((i+1)*batch, l)]):
+    for j, key in enumerate(idxes[i*batch: min((i+1)*batch, l)]):
         # CLS token repr
         # print(np.array(unimol_repr['cls_repr']).shape)
         # atomic level repr, align with rdkit mol.GetAtoms()
         # print(np.array(unimol_repr['atomic_reprs']).shape)
-        key = keys[idx]
         data = pickle.loads(db.begin().get(key))
-        if idx in [136380, 136616, 136619, 136619, 141229, 141259, 141265, 141305, 141310, 141315, 141334, 141360, 141365, 141366, 141397, 141398, 141404, 141415, 141424, 141441, 141501, 141553, 141578, 156269, 157696, 157893, 158158, 159261]:
-            data['lig_emb'] = torch.zeros(unimol_repr['atomic_reprs'][j].shape)
-        else:
-            data['lig_emb'] = torch.tensor(unimol_repr['atomic_reprs'][j])
+        # if key in [136380, 136616, 136619, 136619, 141229, 141259, 141265, 141305, 141310, 141315, 141334, 141360, 141365, 141366, 141397, 141398, 141404, 141415, 141424, 141441, 141501, 141553, 141578, 156269, 157696, 157893, 158158, 159261]:
+        #     data['lig_emb'] = torch.zeros(unimol_repr['atomic_reprs'][j].shape)
+        # else:
+        data['lig_emb'] = torch.tensor(unimol_repr['atomic_reprs'][j])
         txn_new.put(
-            key=str(idx).encode(),
+            key=key,
             value=pickle.dumps(data)
         )
 

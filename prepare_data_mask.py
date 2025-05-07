@@ -182,7 +182,7 @@ class Mask():
             core, chains = fragmentation
             masked_frag = remove_dummys_mol(core)[0]
             masked_frag = remove_dummys_mol(masked_frag)[0]
-            masked_id = mol.GetSubstructMatch(masked_frag)
+            masked_id = self.mol.GetSubstructMatch(masked_frag)
             context_id = list(set(list(range(self.num_atoms))) - set(masked_id))
             masked_idx = list(context_id)
             return masked_idx
@@ -199,7 +199,7 @@ class Mask():
             id = random.randint(0, 1)
             masked_frag = remove_dummys_mol(frag[id])[0]
 
-            masked_id = mol.GetSubstructMatch(masked_frag)
+            masked_id = self.mol.GetSubstructMatch(masked_frag)
             context_id = list(set(list(range(self.num_atoms))) - set(masked_id))
             masked_idx = list(context_id)
             return masked_idx
@@ -212,7 +212,7 @@ class Mask():
                 raise ValueError('Side Chains decomposition is None')
             masked_frag = scaffold
 
-            masked_id = mol.GetSubstructMatch(masked_frag)
+            masked_id = self.mol.GetSubstructMatch(masked_frag)
             context_id = list(set(list(range(self.num_atoms))) - set(masked_id))
             masked_idx = list(context_id)
             return [context_id, masked_idx]
@@ -269,8 +269,7 @@ if __name__ == "__main__":
 
     m = 0
     idxes, all_atoms, all_coordinates, fail_idxes = [], [], [], []
-    for idx in range(len(keys)):
-        key = keys[idx]
+    for key in keys:
         data = pickle.loads(db.begin().get(key))
         protein_filename = data['protein_filename']
         ligand_filename = data['ligand_filename']
@@ -301,17 +300,17 @@ if __name__ == "__main__":
             # smi = Chem.MolToSmiles(mol)
             # name = smi
         except:
-            print(f"{idx} failed")
+            print(f"{key} failed")
             mask_idxes = []
-            fail_idxes.append(idx)
-        if idx in [136380, 136616, 136619, 136619, 141229, 141259, 141265, 141305, 141310, 141315, 141334, 141360, 141365, 141366, 141397, 141398, 141404, 141415, 141424, 141441, 141501, 141553, 141578, 156269, 157696, 157893, 158158, 159261]:
-            mask_idxes = []
+            fail_idxes.append(key)
+        # if idx in [136380, 136616, 136619, 136619, 141229, 141259, 141265, 141305, 141310, 141315, 141334, 141360, 141365, 141366, 141397, 141398, 141404, 141415, 141424, 141441, 141501, 141553, 141578, 156269, 157696, 157893, 158158, 159261]:
+        #     mask_idxes = []
         data['mask_indexes'] = mask_idxes
         txn_new.put(
-            key=str(idx).encode(),
+            key=key,
             value=pickle.dumps(data)
         )
-        idxes.append(idx)
+        idxes.append(key)
         m += 1
     txn_new.commit()
     print(f"samples:{m}")
