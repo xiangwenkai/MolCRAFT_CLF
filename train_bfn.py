@@ -190,6 +190,7 @@ if __name__ == "__main__":
     parser.add_argument('--weight_decay', type=float, default=0)
     parser.add_argument('--max_grad_norm', type=str, default='Q')  # '8.0' for
     parser.add_argument("--guide_weight", type=float, default=1.8)
+    parser.add_argument("--incremental", action="store_true")
 
     # bfn params
     parser.add_argument("--sigma1_coord", type=float, default=0.03)
@@ -220,10 +221,6 @@ if __name__ == "__main__":
         os.environ['PATH'] = '/data/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
 
     os.system('wandb online')
-    last_ckpt = True
-    if last_ckpt:
-        last_checkpoint = torch.load('checkpoints/last.ckpt')
-        params = last_checkpoint['state_dict']
 
     _args = parser.parse_args()
     if _args.ckpt_path.lstrip('./') == 'checkpoints/last.ckpt':
@@ -288,7 +285,9 @@ if __name__ == "__main__":
 
     model = SBDDTrainLoop(config=cfg)
 
-    if last_ckpt:
+    if cfg.incremental:
+        last_checkpoint = torch.load('checkpoints/last.ckpt')
+        params = last_checkpoint['state_dict']
         for name, param in model.named_parameters():
             if name in params:
                 param = params[name]
