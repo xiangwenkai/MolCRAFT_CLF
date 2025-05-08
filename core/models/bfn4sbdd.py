@@ -375,13 +375,12 @@ class BFN4SBDDScoreModel(BFNBase):
             gamma_coord=gamma_coord,
         )  # [N, 3], [N, K], [?]
 
-        lig_embedding = torch.zeros(lig_embedding.shape, device=lig_embedding.device)
         coord_pred_uncond, final_lig_v_uncond, k_hat_uncond = self.interdependency_modeling(
             time=t,
             protein_pos=protein_pos,
             protein_v=protein_v,
             batch_protein=batch_protein,
-            lig_embedding=lig_embedding,
+            lig_embedding=None,
             embedding_mask=embedding_mask,
             theta_h_t=theta,
             mu_pos_t=mu_coord,
@@ -592,13 +591,12 @@ class BFN4SBDDScoreModel(BFNBase):
                 gamma_coord=gamma_coord,
             )  # [N, 3], [N, K], [?]
 
-            lig_emb = torch.zeros(lig_emb.shape, device=lig_emb.device)
             coord_pred_uncond, final_lig_v_uncond, k_hat = self.interdependency_modeling(
                 time=t,
                 protein_pos=protein_pos,
                 protein_v=protein_v,
                 batch_protein=batch_protein,
-                lig_embedding=lig_emb,
+                lig_embedding=None,
                 embedding_mask=embedding_mask,
                 theta_h_t=theta_h_t,
                 mu_pos_t=mu_pos_t,
@@ -791,13 +789,12 @@ class BFN4SBDDScoreModel(BFNBase):
             gamma_coord=1 - self.sigma1_coord**2,  # γ(t) = 1 − (σ1**2) ** t
         )  # [N, 3], [N, K], [?]
 
-        lig_emb = torch.zeros(lig_emb.shape, device=lig_emb.device)
         mu_pos_final_uncond, final_lig_v_uncond, k_hat_final = self.interdependency_modeling(
             time=torch.ones((n_nodes, 1)).to(self.device)[batch_ligand],
             protein_pos=protein_pos,
             protein_v=protein_v,
             batch_protein=batch_protein,
-            lig_embedding=lig_emb,
+            lig_embedding=None,
             embedding_mask=embedding_mask,
             theta_h_t=theta_h_t,
             mu_pos_t=mu_pos_t,

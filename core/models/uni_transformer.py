@@ -450,13 +450,16 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 e_w = None
 
             for l_idx, layer in enumerate(self.base_block):
-                h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
-                h_new = h.clone()
-                h_new[mask_ligand] = h[mask_ligand] + h_g
-                x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
-                x_new = x.clone()
-                x_new[mask_ligand] = x[mask_ligand] + x_g
-                h, x = layer[0](h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
+                if lig_embedding is not None:
+                    h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                    h_new = h.clone()
+                    h_new[mask_ligand] = h[mask_ligand] + h_g
+                    x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                    x_new = x.clone()
+                    x_new[mask_ligand] = x[mask_ligand] + x_g
+                    h, x = layer[0](h_new, x_new, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
+                else:
+                    h, x = layer[0](h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
             all_x.append(x)
             all_h.append(h)
 
