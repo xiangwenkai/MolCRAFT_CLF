@@ -54,9 +54,13 @@ class CrossAttention(nn.Module):
         else:
             raise ValueError('mode should be "concat" or "cross"')
 
-    def forward(self, x, batch_x, batch_encoder, layer_past=None, encoder_embedding=None, encoder_mask=None, mode='cross'):
-        unique_ids_x = batch_x.unique()
-        grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
+    def forward(self, x, batch_x, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross'):
+        # unique_ids_x = batch_x.unique()
+        # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
+        # lengths_x = [seq.size(0) for seq in grouped_x]
+        unique_ids_x = batch_encoder.unique()
+        x_lig = x[mask_ligand]
+        grouped_x = [x_lig[batch_encoder == uid] for uid in unique_ids_x]
         lengths_x = [seq.size(0) for seq in grouped_x]
         padded_x = pad_sequence(grouped_x, batch_first=True)
         B, T, C = padded_x.size()
@@ -130,6 +134,7 @@ class CrossAttention(nn.Module):
         # output projection
         y = self.resid_drop(self.proj(cross_y))
         y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
+        x[mask_ligand] = y_unpadded[:]
         return y_unpadded
 
 
@@ -446,10 +451,10 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 e_w = None
 
             for l_idx, layer in enumerate(self.base_block):
-                h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                 h = h + h_g
-                x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
-                x = x + x_g * mask_ligand[:, None]
+                x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                x = x + x_g
                 h, x = layer[0](h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
             all_x.append(x)
             all_h.append(h)
