@@ -119,7 +119,7 @@ class CrossAttention(nn.Module):
                     # expand mask to match attention score shape (B, 1, 1, S)
                     encoder_mask = encoder_mask.unsqueeze(1).unsqueeze(2)
                     # set the attention score of padding position to negative infinity
-                    cross_att = cross_att.masked_fill(encoder_mask == 0, -float('inf'))
+                    cross_att = cross_att.masked_fill(encoder_mask == 0, -1e-10)
 
                 # softmax
                 cross_att = F.softmax(cross_att, dim=-1)
@@ -134,9 +134,7 @@ class CrossAttention(nn.Module):
         # output projection
         y = self.resid_drop(self.proj(cross_y))
         y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
-        x_update = x.clone()
-        x_update[mask_ligand] = y_unpadded
-        return x_update
+        return y_unpadded
 
 
 class BaseX2HAttLayer(nn.Module):
@@ -453,9 +451,11 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
 
             for l_idx, layer in enumerate(self.base_block):
                 h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
-                h = h + h_g * mask_ligand[:, None]
+                h_new = h.clone()
+                h_new[mask_ligand] = h[mask_ligand] + h_g
                 x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
-                x = x + x_g * mask_ligand[:, None]
+                x_new = x.clone()
+                x_new[mask_ligand] = x[mask_ligand] + x_g
                 h, x = layer[0](h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
             all_x.append(x)
             all_h.append(h)
