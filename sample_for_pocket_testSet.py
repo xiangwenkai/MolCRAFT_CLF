@@ -333,7 +333,7 @@ if __name__ == '__main__':
     # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv
     # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv
     parser = argparse.ArgumentParser()
-    parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo'])
+    parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
     parser.add_argument('--data_path', type=str, default='/data4/wenkai/MolCRAFT_CLF/data/test_set')
     parser.add_argument('--output_file', type=str, default='res.csv')
     parser.add_argument('--sdf_folder_path', type=str, default='output') # 默认同config.yaml中的test_outputs_dir
@@ -373,6 +373,8 @@ if __name__ == '__main__':
                 guide_index = mask.get_scaffold_side_chain_mask()
             elif scenario == 'denovo':
                 guide_index = [[]]
+            elif scenario == 'nomask':
+                guide_index = [[k for k in range(num_nodes)]]
 
             print("guide_index:", guide_index)
 
