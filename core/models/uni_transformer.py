@@ -135,7 +135,7 @@ class CrossAttention(nn.Module):
         y = self.resid_drop(self.proj(cross_y))
         y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
         x[mask_ligand] = y_unpadded[:]
-        return y_unpadded
+        return x
 
 
 class BaseX2HAttLayer(nn.Module):
