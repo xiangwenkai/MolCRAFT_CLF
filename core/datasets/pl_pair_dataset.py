@@ -295,7 +295,7 @@ class PocketLigandPairDatasetFeaturized(Dataset):
             self.features_to_save = [
                 'protein_pos', 'protein_atom_feature', 'protein_element', 
                 'ligand_pos', 'ligand_atom_feature_full', 'ligand_element',
-                'protein_filename', 'ligand_filename', 'lig_emb', 'mask_indexes'
+                'protein_filename', 'ligand_filename', 'lig_emb', 'mask_indexes', 'nci_indexes'
             ]
         else:
             raise NotImplementedError

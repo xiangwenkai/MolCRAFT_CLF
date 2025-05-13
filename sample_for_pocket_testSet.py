@@ -372,16 +372,16 @@ if __name__ == '__main__':
             elif scenario == 'scaffold':
                 guide_index = mask.get_scaffold_side_chain_mask()
             elif scenario == 'denovo':
-                guide_index = [[]]
-            elif scenario == 'nomask':
                 guide_index = [[k for k in range(num_nodes)]]
+            elif scenario == 'nomask':
+                guide_index = [[]]
 
             print("guide_index:", guide_index)
 
         except:
             print(f"process {file_name} fail")
             continue
-        if scenario != 'denovo' and not guide_index:
+        if scenario != 'nomask' and not guide_index:
             print(f"index is none")
             continue
         try:

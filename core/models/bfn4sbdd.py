@@ -370,6 +370,7 @@ class BFN4SBDDScoreModel(BFNBase):
         batch_ligand,
         lig_embedding,
         mask_indexes,
+        nci_indexes,
     ):
         K = self.num_classes
 
@@ -491,6 +492,71 @@ class BFN4SBDDScoreModel(BFNBase):
                 K=K,
                 segment_ids=batch_ligand,
             )
+
+        if sum(len(x) for x in nci_indexes) > 0:
+            nci_batch_index = []
+
+            unique_ids = torch.unique(batch_ligand)
+            for sample_id in unique_ids:
+                indices = (batch_ligand == sample_id).nonzero(as_tuple=True)[0]
+                selected = nci_indexes[sample_id.item()]
+                if selected:
+                    if len(selected) == 1:
+                        selected = selected[0]
+                        selected_indices = indices[selected]
+                        nci_batch_index.append(selected_indices.item())
+                    else:
+                        selected_indices = indices[selected]
+                        nci_batch_index.extend(selected_indices.tolist())
+
+            # if K == 2:
+            #     p0_1_cond = torch.sigmoid(final_lig_v_cond)  #
+            #     p0_2_cond = 1 - p0_1_cond
+            #     p0_h_cond = torch.cat((p0_1_cond, p0_2_cond), dim=-1)  #
+            # else:
+            #     p0_h_cond = torch.nn.functional.softmax(final_lig_v_cond, dim=-1)  # [N_ligand, 13]
+            if not self.use_discrete_t:
+                closs_nci = self.ctime4continuous_loss(
+                    t=t,
+                    sigma1=self.sigma1_coord,
+                    x_pred=coord_pred,
+                    x=ligand_pos,
+                    segment_ids=batch_ligand,
+                    select_index=nci_batch_index
+                )  # [B,]
+                dloss_nci = self.ctime4discrete_loss(
+                    t=t,
+                    beta1=self.beta1,
+                    one_hot_x=ligand_v,
+                    p_0=p0_h,
+                    K=K,
+                    segment_ids=batch_ligand,
+                    select_index=nci_batch_index,
+                )  # [B,]
+            else:
+                i = (t * self.discrete_steps).int() + 1  # discrete interval [1,N]
+                closs_nci = self.dtime4continuous_loss(
+                    i=i,
+                    N=self.discrete_steps,
+                    sigma1=self.sigma1_coord,
+                    x_pred=coord_pred,
+                    x=ligand_pos,
+                    segment_ids=batch_ligand,
+                    select_index=nci_batch_index,
+                )
+
+                dloss_nci = self.dtime4discrete_loss_prob(
+                    i=i,
+                    N=self.discrete_steps,
+                    beta1=self.beta1,
+                    one_hot_x=ligand_v,
+                    p_0=p0_h,
+                    K=K,
+                    segment_ids=batch_ligand,
+                    select_index=nci_batch_index,
+                )
+            closs += closs_nci
+            dloss += dloss_nci
 
             # mixed loss
             # dloss = self.ctime4discrete_loss(

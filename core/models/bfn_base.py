@@ -105,59 +105,95 @@ class BFNBase(nn.Module):
         mu = gamma * x + torch.randn_like(x) * torch.sqrt(gamma * (1 - gamma))
         return mu, gamma
 
-    def ctime4continuous_loss(self, t, sigma1, x_pred, x, segment_ids=None):
+    def ctime4continuous_loss(self, t, sigma1, x_pred, x, segment_ids=None, select_index=None):
         # Eq.(101): L∞(x) = −ln(σ1) * E_{t∼U (0,1), p_F(θ|x;t)} [|x − x_hat(θ,t)|**2 / (σ_1**2)**t]
-        if segment_ids is not None:
-            loss = scatter_mean(
-                torch.pow(sigma1, -2 * t.view(-1))
-                * ((x_pred - x).view(x.shape[0], -1).abs().pow(2).sum(dim=1)),
-                segment_ids,
-                dim=0,
-            )
+        if select_index is not None:
+            if segment_ids is not None:
+                loss = scatter_mean(
+                    torch.pow(sigma1, -2 * t.view(-1))
+                    * ((x_pred - x).view(x.shape[0], -1)[select_index].abs().pow(2).sum(dim=1)),
+                    segment_ids,
+                    dim=0,
+                )
+            else:
+                loss = torch.pow(sigma1, -2 * t.view(-1)) * (x_pred - x).view(
+                    x.shape[0], -1
+                )[select_index].abs().pow(2).sum(dim=1)
         else:
-            loss = torch.pow(sigma1, -2 * t.view(-1)) * (x_pred - x).view(
-                x.shape[0], -1
-            ).abs().pow(2).sum(dim=1)
+            if segment_ids is not None:
+                loss = scatter_mean(
+                    torch.pow(sigma1, -2 * t.view(-1))
+                    * ((x_pred - x).view(x.shape[0], -1).abs().pow(2).sum(dim=1)),
+                    segment_ids,
+                    dim=0,
+                )
+            else:
+                loss = torch.pow(sigma1, -2 * t.view(-1)) * (x_pred - x).view(
+                    x.shape[0], -1
+                ).abs().pow(2).sum(dim=1)
         return -torch.log(sigma1) * loss
 
-    def dtime4continuous_loss(self, i, N, sigma1, x_pred, x, segment_ids=None):
+    def dtime4continuous_loss(self, i, N, sigma1, x_pred, x, segment_ids=None, select_index=None):
         # TODO not debuged yet
         weight = N * (1 - torch.pow(sigma1, 2 / N)) / (2 * torch.pow(sigma1, 2 * i / N))
         # print(x_pred.shape, x.shape , i.shape,weight.shape)
         # print(segment_ids)
-        if segment_ids is not None:
-            loss = scatter_mean(
-                weight.view(-1) * ((x_pred - x) ** 2).sum(-1), segment_ids, dim=0
-            )
+        if select_index is not None:
+            if segment_ids is not None:
+                loss = scatter_mean(
+                    weight.view(-1)[select_index] * ((x_pred - x)[select_index] ** 2).sum(-1), segment_ids[select_index], dim=0
+                )
+            else:
+                loss = (
+                    N
+                    * (1 - torch.pow(sigma1, 2 / N))
+                    / (2 * torch.pow(sigma1, 2 * i / N))
+                    * (x_pred - x).view(x.shape[0], -1)[select_index].abs().pow(2).sum(dim=1)
+                )
         else:
-            loss = (
-                N
-                * (1 - torch.pow(sigma1, 2 / N))
-                / (2 * torch.pow(sigma1, 2 * i / N))
-                * (x_pred - x).view(x.shape[0], -1).abs().pow(2).sum(dim=1)
-            )
+            if segment_ids is not None:
+                loss = scatter_mean(
+                    weight.view(-1) * ((x_pred - x) ** 2).sum(-1), segment_ids, dim=0
+                )
+            else:
+                loss = (
+                    N
+                    * (1 - torch.pow(sigma1, 2 / N))
+                    / (2 * torch.pow(sigma1, 2 * i / N))
+                    * (x_pred - x).view(x.shape[0], -1).abs().pow(2).sum(dim=1)
+                )
 
         # print(loss.shape)
         return loss
 
-    def ctime4discrete_loss(self, t, beta1, one_hot_x, p_0, K, segment_ids=None):
+    def ctime4discrete_loss(self, t, beta1, one_hot_x, p_0, K, segment_ids=None, select_index=None):
         # Eq.(205): L∞(x) = Kβ(1) E_{t∼U (0,1), p_F (θ|x,t)} [t|e_x − e_hat(θ, t)|**2,
         # where e_hat(θ, t) = (\sum_k p_O^(1) (k | θ; t)e_k, ..., \sum_k p_O^(D) (k | θ; t)e_k)
         e_x = one_hot_x  # [N, K]
         e_hat = p_0  # (N, K)
         assert e_x.size() == e_hat.size()
-        if segment_ids is not None:
-            L_infinity = scatter_mean(
-                K * beta1 * t.view(-1) * ((e_x - e_hat) ** 2).sum(dim=-1),
-                segment_ids,
-                dim=0,
-            )
+        if select_index is not None:
+            if segment_ids is not None:
+                L_infinity = scatter_mean(
+                    K * beta1 * t.view(-1) * ((e_x - e_hat)[select_index] ** 2).sum(dim=-1),
+                    segment_ids,
+                    dim=0,
+                )
+            else:
+                L_infinity = K * beta1 * t.view(-1) * ((e_x - e_hat)[select_index] ** 2).sum(dim=-1)
         else:
-            L_infinity = K * beta1 * t.view(-1) * ((e_x - e_hat) ** 2).sum(dim=-1)
+            if segment_ids is not None:
+                L_infinity = scatter_mean(
+                    K * beta1 * t.view(-1) * ((e_x - e_hat) ** 2).sum(dim=-1),
+                    segment_ids,
+                    dim=0,
+                )
+            else:
+                L_infinity = K * beta1 * t.view(-1) * ((e_x - e_hat) ** 2).sum(dim=-1)
         return L_infinity
 
     def dtime4discrete_loss_prob(
-        self, i, N, beta1, one_hot_x, p_0, K, n_samples=200, segment_ids=None
+        self, i, N, beta1, one_hot_x, p_0, K, n_samples=200, segment_ids=None, select_index=None
     ):
         # this is based on the official implementation of BFN.
         # import pdb
@@ -183,10 +219,15 @@ class BFNBase(nn.Module):
         sender_dist = dist.Independent( dist.Normal(
             alpha* ((K * target_x) - 1), ((K * alpha) ** 0.5)
         ),1)  # [D, K]
-        y = sender_dist.sample(torch.Size([n_samples])) 
-        loss = N * (sender_dist.log_prob(y) - receiver_dist.log_prob(y)).mean(0).mean(
-            -1, keepdims=True
-        )
+        y = sender_dist.sample(torch.Size([n_samples]))
+        if select_index is not None:
+            loss = N * (sender_dist.log_prob(y) - receiver_dist.log_prob(y))[select_index].mean(0).mean(
+                -1, keepdims=True
+            )
+        else:
+            loss = N * (sender_dist.log_prob(y) - receiver_dist.log_prob(y)).mean(0).mean(
+                -1, keepdims=True
+            )
         # loss = (
         #         (sender_dist.log_prob(y) - receiver_dist.log_prob(y))
         #         .mean(0)
