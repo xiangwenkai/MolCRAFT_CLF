@@ -144,8 +144,8 @@ def on_test_epoch_end(outputs):
             w.write(mol)
 
 
-def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='./checkpoints/last.ckpt',
-         num_samples=10, sample_steps=100, sample_num_atoms='ref',
+def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='',
+         num_samples=100, sample_steps=100, sample_num_atoms='ref',
          beta1=1.5, sigma1_coord=0.03, sampling_strategy='end_back', seed=1234,
          args=None, file_name=None):
     cfg = Config('./checkpoints/config.yaml')
@@ -329,12 +329,14 @@ class NpEncoder(json.JSONEncoder):
 
 
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv --sdf_folder_path output/test_frag
+    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv --sdf_folder_path output/test_link
+    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv --sdf_folder_path output/test_scaffold
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path output/test_denovo
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario nomask --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path output/test_nomask
     parser = argparse.ArgumentParser()
-    parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
+    parser.add_argument('--scenario', type=str, default='denovo',
+                        choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
     parser.add_argument('--data_path', type=str, default='/data4/wenkai/MolCRAFT_CLF/data/test_set')
     parser.add_argument('--output_file', type=str, default='res.csv')
     parser.add_argument('--sdf_folder_path', type=str, default='output')  # 默认同config.yaml中的test_outputs_dir
@@ -382,7 +384,7 @@ if __name__ == '__main__':
         except:
             print(f"process {file_name} fail")
             continue
-        if scenario != 'nomask' and not guide_index:
+        if scenario != 'denovo' and not guide_index:
             print(f"index is none")
             continue
         try:
@@ -390,13 +392,16 @@ if __name__ == '__main__':
         except:
             print(f"fail to generate for {file_name}")
             continue
-        files = os.listdir('output')
+
+        '''
+        sdf_path = os.path.join(args.sdf_folder_path, file_name)
+        files = os.listdir(sdf_path)
         n = len(files)
         if n == 0:
             continue
         qed, sa, lipinski, logp, vina_score, vina_min, vina_dock = [], [], [], [], [], [], []
         for file in files:
-            out_fn = f'output/{file}'
+            out_fn = sdf_path + f'/{file}'
             metrics = Metrics(protein_path, ligand_path, out_fn).evaluate()
             qed.append(round(metrics['qed'], 3))
             sa.append(round(metrics['sa'], 3))
@@ -421,6 +426,9 @@ if __name__ == '__main__':
     # res.to_csv('res/gradient_endback_res.csv', index=False)
     # res.to_csv('res/base_res.csv', index=False)
     # res.to_csv('res/noise_diff3_res.csv', index=False)
+
+    os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
     res.to_csv(args.output_file, index=False)
     # print(json.dumps(metrics, indent=4, cls=NpEncoder))
+        '''
 
