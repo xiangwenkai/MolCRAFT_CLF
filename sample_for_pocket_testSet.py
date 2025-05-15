@@ -45,6 +45,7 @@ from core.evaluation.docking_vina import VinaDockingTask
 from posecheck import PoseCheck
 import numpy as np
 from rdkit import Chem
+
 random.seed(42)
 
 
@@ -87,7 +88,7 @@ def get_dataloader_from_pdb(cfg, emb_info, guide_index):
     cfg.dynamics.protein_atom_feature_dim = protein_featurizer.feature_dim
     cfg.dynamics.ligand_atom_feature_dim = ligand_featurizer.feature_dim
     print(f"protein feature dim: {cfg.dynamics.protein_atom_feature_dim}, " +
-            f"ligand feature dim: {cfg.dynamics.ligand_atom_feature_dim}")
+          f"ligand feature dim: {cfg.dynamics.ligand_atom_feature_dim}")
 
     # dataloader
     collate_exclude_keys = ["ligand_nbh_list"]
@@ -106,49 +107,50 @@ def get_dataloader_from_pdb(cfg, emb_info, guide_index):
 
     return test_loader
 
+
 def on_test_epoch_end(outputs):
-        results, recon_dict = reconstruct_mol_and_filter_invalid(outputs)
+    results, recon_dict = reconstruct_mol_and_filter_invalid(outputs)
 
-        OUT_DIR = './output'
-        if os.path.exists(OUT_DIR):
-            shutil.rmtree(OUT_DIR)
-        os.makedirs(OUT_DIR, exist_ok=True)
+    OUT_DIR = './output'
+    if os.path.exists(OUT_DIR):
+        shutil.rmtree(OUT_DIR)
+    os.makedirs(OUT_DIR, exist_ok=True)
 
-        for idx, res in enumerate(tqdm(results, desc="Chem eval")):
-            try:
-                mol = res['mol']
-                ligand_filename = res['ligand_filename']
-                mol.SetProp('_Name', ligand_filename)
+    for idx, res in enumerate(tqdm(results, desc="Chem eval")):
+        try:
+            mol = res['mol']
+            ligand_filename = res['ligand_filename']
+            mol.SetProp('_Name', ligand_filename)
 
-                Chem.SanitizeMol(mol)
-                smiles = Chem.MolToSmiles(mol)
-                validity = smiles is not None
-                complete = '.' not in smiles
-            except:
-                print('sanitize failed')
-                continue
+            Chem.SanitizeMol(mol)
+            smiles = Chem.MolToSmiles(mol)
+            validity = smiles is not None
+            complete = '.' not in smiles
+        except:
+            print('sanitize failed')
+            continue
 
-            if not validity or not complete:
-                print('validity', validity, 'complete', complete)
-                continue
+        if not validity or not complete:
+            print('validity', validity, 'complete', complete)
+            continue
 
-            # ligand_filename = graph.ligand_filename
-            # ligand_dir = os.path.dirname(ligand_filename)
-            # ligand_fn = os.path.basename(ligand_filename)
-            # protein_fn = os.path.join(ligand_dir, ligand_fn[:10] + '.pdb')
-            # print(json.dumps(chem_results, indent=4, cls=NpEncoder))
-            out_fn = os.path.join(OUT_DIR, f'{idx}.sdf')
-            with Chem.SDWriter(out_fn) as w:
-                w.write(mol)
+        # ligand_filename = graph.ligand_filename
+        # ligand_dir = os.path.dirname(ligand_filename)
+        # ligand_fn = os.path.basename(ligand_filename)
+        # protein_fn = os.path.join(ligand_dir, ligand_fn[:10] + '.pdb')
+        # print(json.dumps(chem_results, indent=4, cls=NpEncoder))
+        out_fn = os.path.join(OUT_DIR, f'{idx}.sdf')
+        with Chem.SDWriter(out_fn) as w:
+            w.write(mol)
 
-def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='./checkpoints/last.ckpt',
-         num_samples=10, sample_steps=100, sample_num_atoms='ref',
+
+def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='',
+         num_samples=100, sample_steps=100, sample_num_atoms='ref',
          beta1=1.5, sigma1_coord=0.03, sampling_strategy='end_back', seed=1234,
          args=None, file_name=None):
-    
     cfg = Config('./checkpoints/config.yaml')
     seed_everything(cfg.seed)
-    
+
     cfg.evaluation.protein_path = protein_fn
     cfg.evaluation.ligand_path = ligand_fn
     # cfg.evaluation.emb = emb_info
@@ -223,7 +225,7 @@ class Metrics:
             chem_results.update(scoring_func.get_chem(mol))
             chem_results['atom_num'] = mol.GetNumAtoms()
 
-            # docking                
+            # docking
             vina_task = VinaDockingTask.from_generated_mol(mol, ligand_filename=self.ref_ligand_fn, protein_root='./')
             score_only_results = vina_task.run(mode='score_only', exhaustiveness=self.exhaustiveness)
             minimize_results = vina_task.run(mode='minimize', exhaustiveness=self.exhaustiveness)
@@ -237,7 +239,7 @@ class Metrics:
         except Exception as e:
             print("vina score failed")
             print(e)
-        
+
         return chem_results
 
     def pose_check(self, mol):
@@ -277,7 +279,7 @@ class Metrics:
                 df = pc.calculate_interactions()
                 columns = np.array([column[2] for column in df.columns])
                 flags = np.array([df[column][0] for column in df.columns])
-                
+
                 def count_inter(inter_type):
                     if len(columns) == 0:
                         return 0
@@ -301,10 +303,10 @@ class Metrics:
             mol.SetProp(k, str(v))
 
         return pose_check_results
-    
+
     def evaluate(self):
         mol = Chem.SDMolSupplier(self.ligand_fn, removeHs=False)[0]
-       
+
         chem_results = self.vina_dock(mol)
         try:
             pose_check_results = self.pose_check(mol)
@@ -326,17 +328,18 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 
-
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv
-    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv
+    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv --sdf_folder_path output/test_frag
+    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv --sdf_folder_path output/test_link
+    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv --sdf_folder_path output/test_scaffold
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path output/test_denovo
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario nomask --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path output/test_nomask
     parser = argparse.ArgumentParser()
-    parser.add_argument('--scenario', type=str, default='denovo', choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
+    parser.add_argument('--scenario', type=str, default='denovo',
+                        choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
     parser.add_argument('--data_path', type=str, default='/data4/wenkai/MolCRAFT_CLF/data/test_set')
     parser.add_argument('--output_file', type=str, default='res.csv')
-    parser.add_argument('--sdf_folder_path', type=str, default='output') # 默认同config.yaml中的test_outputs_dir
+    parser.add_argument('--sdf_folder_path', type=str, default='output')  # 默认同config.yaml中的test_outputs_dir
 
     args = parser.parse_args()
 
@@ -381,7 +384,7 @@ if __name__ == '__main__':
         except:
             print(f"process {file_name} fail")
             continue
-        if scenario != 'nomask' and not guide_index:
+        if scenario != 'denovo' and not guide_index:
             print(f"index is none")
             continue
         try:
@@ -389,13 +392,16 @@ if __name__ == '__main__':
         except:
             print(f"fail to generate for {file_name}")
             continue
-        files = os.listdir('output')
+
+        '''
+        sdf_path = os.path.join(args.sdf_folder_path, file_name)
+        files = os.listdir(sdf_path)
         n = len(files)
         if n == 0:
             continue
         qed, sa, lipinski, logp, vina_score, vina_min, vina_dock = [], [], [], [], [], [], []
         for file in files:
-            out_fn = f'output/{file}'
+            out_fn = sdf_path + f'/{file}'
             metrics = Metrics(protein_path, ligand_path, out_fn).evaluate()
             qed.append(round(metrics['qed'], 3))
             sa.append(round(metrics['sa'], 3))
@@ -405,18 +411,24 @@ if __name__ == '__main__':
             vina_min.append(round(metrics['vina_minimize'], 3))
             vina_dock.append(round(metrics['vina_dock'], 3))
             # clash.append(metrics['clash'])
-        print(f"{file_idx}. Avg metrics:\nQED: {sum(qed)/n}\nSA: {sum(sa)/n}\nVina Score: {sum(vina_score)/n}\nVina Min: {sum(vina_min)/n}\nVina Dock: {sum(vina_dock)/n}\nLipinski: {sum(lipinski)/n}\nLogp: {sum(logp)/n}")
-        qeds.append(sum(qed)/n)
-        sas.append(sum(sa)/n)
-        vina_scores.append(sum(vina_score)/n)
-        vina_mins.append(sum(vina_min)/n)
-        vina_docks.append(sum(vina_dock)/n)
-        lipinskis.append(sum(lipinski)/n)
-    res = pd.DataFrame({'qed': qeds, 'sa': sas, 'vina_score': vina_scores, 'vina_min':vina_mins, 'vina_dock':vina_docks, 'lipinski':lipinskis})
+        print(
+            f"{file_idx}. Avg metrics:\nQED: {sum(qed) / n}\nSA: {sum(sa) / n}\nVina Score: {sum(vina_score) / n}\nVina Min: {sum(vina_min) / n}\nVina Dock: {sum(vina_dock) / n}\nLipinski: {sum(lipinski) / n}\nLogp: {sum(logp) / n}")
+        qeds.append(sum(qed) / n)
+        sas.append(sum(sa) / n)
+        vina_scores.append(sum(vina_score) / n)
+        vina_mins.append(sum(vina_min) / n)
+        vina_docks.append(sum(vina_dock) / n)
+        lipinskis.append(sum(lipinski) / n)
+    res = pd.DataFrame(
+        {'qed': qeds, 'sa': sas, 'vina_score': vina_scores, 'vina_min': vina_mins, 'vina_dock': vina_docks,
+         'lipinski': lipinskis})
     # res.to_csv('res/gradient_vanilla_res.csv', index=False)
     # res.to_csv('res/gradient_endback_res.csv', index=False)
     # res.to_csv('res/base_res.csv', index=False)
     # res.to_csv('res/noise_diff3_res.csv', index=False)
+
+    os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
     res.to_csv(args.output_file, index=False)
     # print(json.dumps(metrics, indent=4, cls=NpEncoder))
+        '''
 
