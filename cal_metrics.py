@@ -144,18 +144,18 @@ if __name__ == "__main__":
                         f"cp /data4/wenkai/MolCRAFT_CLF/data/test_set/{f}/*.sdf logs/test_{scene}/{f}/ligand.sdf")
                     os.system(
                         f"cp /data4/wenkai/MolCRAFT_CLF/data/test_set/{f}/*.pdb logs/test_{scene}/{f}/protein.pdb")
-        qeds.append(sum(qed) / n)
-        sas.append(sum(sa) / n)
-        if n_vina > 0:
-            vina_scores.append(sum(vina_score) / n_vina)
-        else:
-            vina_scores.append(0.)
-        if n_vina_min > 0:
-            vina_mins.append(sum(vina_min) / n_vina_min)
-        else:
-            vina_mins.append(0.)
-        vina_docks.append(sum(vina_dock) / n)
-        lipinskis.append(sum(lipinski) / n)
+            qeds.append(sum(qed) / n)
+            sas.append(sum(sa) / n)
+            if n_vina > 0:
+                vina_scores.append(sum(vina_score) / n_vina)
+            else:
+                vina_scores.append(0.)
+            if n_vina_min > 0:
+                vina_mins.append(sum(vina_min) / n_vina_min)
+            else:
+                vina_mins.append(0.)
+            vina_docks.append(sum(vina_dock) / n)
+            lipinskis.append(sum(lipinski) / n)
     res = pd.DataFrame(
         {'qed': qeds, 'sa': sas, 'vina_score': vina_scores, 'vina_min': vina_mins, 'vina_dock': vina_docks,
          'lipinski': lipinskis})
