@@ -354,6 +354,9 @@ if __name__ == '__main__':
     file_names = os.listdir(path)
     qeds, sas, lipinskis, logps, vina_scores, vina_mins, vina_docks = [], [], [], [], [], [], []
     for file_idx, file_name in enumerate(file_names):
+        if os.path.exists(f"{args.sdf_folder_path}/{file_name}"):
+            print(f"already has generation, skipping......")
+            continue
         # file_name = 'GLMU_STRPN_2_459_0'
         names = os.listdir(os.path.join(path, file_name))
         pdb_name = [x for x in names if 'pdb' in x and 'pdbqt' not in x][0]
