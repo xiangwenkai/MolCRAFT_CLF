@@ -189,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument('--scheduler', type=str, default='plateau', choices=['cosine', 'plateau'])
     parser.add_argument('--weight_decay', type=float, default=0)
     parser.add_argument('--max_grad_norm', type=str, default='Q')  # '8.0' for
-    parser.add_argument("--guide_weight", type=float, default=1.8)
+    parser.add_argument("--cond_rate", type=float, default=0.9)
     parser.add_argument("--incremental", action="store_true")
 
     # bfn params

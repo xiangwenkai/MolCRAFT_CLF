@@ -102,7 +102,7 @@ class BFN4SBDDScoreModel(BFNBase):
         pos_init_mode='zero',
         destination_prediction = False,
         sampling_strategy = "vanilla",
-        guide_weight = 1.8
+        cond_rate = 0.9
     ):
         super(BFN4SBDDScoreModel, self).__init__()
         # if include_charge:
@@ -112,7 +112,7 @@ class BFN4SBDDScoreModel(BFNBase):
         net_config = Struct(**net_config)
         self.config = net_config
 
-        self.guide_weight = guide_weight # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
+        self.cond_rate = cond_rate # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
 
         if net_config.name == 'unio2net':
             self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict())
@@ -403,35 +403,32 @@ class BFN4SBDDScoreModel(BFNBase):
         # continuous x ~ δ(x − x_hat(θ, t))
         # discrete k^(d) ~ softmax(Ψ^(d)(θ, t))_k
         embedding_mask = self.get_emb_mask(batch_ligand, mask_indexes)
-        coord_pred_cond, final_lig_v_cond, k_hat_cond = self.interdependency_modeling(
-            time=t,
-            protein_pos=protein_pos,
-            protein_v=protein_v,
-            batch_protein=batch_protein,
-            lig_embedding=lig_embedding,
-            embedding_mask=embedding_mask,
-            theta_h_t=theta,
-            mu_pos_t=mu_coord,
-            batch_ligand=batch_ligand,
-            gamma_coord=gamma_coord,
-        )  # [N, 3], [N, K], [?]
-
-        coord_pred_uncond, final_lig_v_uncond, k_hat_uncond = self.interdependency_modeling(
-            time=t,
-            protein_pos=protein_pos,
-            protein_v=protein_v,
-            batch_protein=batch_protein,
-            lig_embedding=None,
-            embedding_mask=embedding_mask,
-            theta_h_t=theta,
-            mu_pos_t=mu_coord,
-            batch_ligand=batch_ligand,
-            gamma_coord=gamma_coord,
-        )  # [N, 3], [N, K], [?]
-        coord_eps = (1 + self.guide_weight) * (coord_pred_cond - mu_coord) - self.guide_weight * (coord_pred_uncond - mu_coord)
-        coord_pred = mu_coord + coord_eps
-        h_eps = (1 + self.guide_weight) * (final_lig_v_cond - theta) - self.guide_weight * (final_lig_v_uncond - theta)
-        final_lig_v = theta + h_eps
+        if random.random() < self.cond_rate:
+            coord_pred, final_lig_v, k_hat = self.interdependency_modeling(
+                time=t,
+                protein_pos=protein_pos,
+                protein_v=protein_v,
+                batch_protein=batch_protein,
+                lig_embedding=lig_embedding,
+                embedding_mask=embedding_mask,
+                theta_h_t=theta,
+                mu_pos_t=mu_coord,
+                batch_ligand=batch_ligand,
+                gamma_coord=gamma_coord,
+            )  # [N, 3], [N, K], [?]
+        else:
+            coord_pred, final_lig_v, k_hat = self.interdependency_modeling(
+                time=t,
+                protein_pos=protein_pos,
+                protein_v=protein_v,
+                batch_protein=batch_protein,
+                lig_embedding=None,
+                embedding_mask=embedding_mask,
+                theta_h_t=theta,
+                mu_pos_t=mu_coord,
+                batch_ligand=batch_ligand,
+                gamma_coord=gamma_coord,
+            )  # [N, 3], [N, K], [?]
 
         # take softmax will do
         if K == 2:
@@ -533,7 +530,8 @@ class BFN4SBDDScoreModel(BFNBase):
         sample_steps=1000,
         desc='',
         ligand_pos=None,  # for debug
-        mask_strategy='random'
+        mask_strategy='random',
+        guide_weight = 1.8
     ):
         """
         The function implements a sampling procedure for BFN
@@ -644,10 +642,10 @@ class BFN4SBDDScoreModel(BFNBase):
                 batch_ligand=batch_ligand,
                 gamma_coord=gamma_coord,
             )  # [N, 3], [N, K], [?]
-            coord_eps = (1 + self.guide_weight) * (coord_pred_cond - mu_pos_t) - self.guide_weight * (
+            coord_eps = (1 + guide_weight) * (coord_pred_cond - mu_pos_t) - guide_weight * (
                         coord_pred_uncond - mu_pos_t)
             coord_pred = mu_pos_t + coord_eps
-            h_eps = (1 + self.guide_weight) * (final_lig_v_cond - theta_h_t) - self.guide_weight * (
+            h_eps = (1 + guide_weight) * (final_lig_v_cond - theta_h_t) - guide_weight * (
                         final_lig_v_uncond - theta_h_t)
             final_lig_v = theta_h_t + h_eps
 
