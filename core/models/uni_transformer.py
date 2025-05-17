@@ -35,6 +35,7 @@ class CrossAttention(nn.Module):
         self.n_head = n_head
 
         self.r_min = 0.
+        self.r_max = 10.
         self.distance_expansion = GaussianSmearing(self.r_min, self.r_max, num_gaussians=50)
 
         # self.num_h2x = 1
