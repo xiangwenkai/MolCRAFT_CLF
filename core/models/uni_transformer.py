@@ -14,7 +14,7 @@ class CrossAttention(nn.Module):
     add cross attention
     """
 
-    def __init__(self, input_dim, n_embd, out_dim, n_head, attn_pdrop=0., resid_pdrop=0., cross_pdrop=0., mode='cross'):
+    def __init__(self, input_dim, n_embd, out_dim, n_head, attn_pdrop=0.1, resid_pdrop=0.1, cross_pdrop=0.1, mode='cross'):
         super().__init__()
         assert n_embd % n_head == 0
 
@@ -33,6 +33,19 @@ class CrossAttention(nn.Module):
         num = 0
 
         self.n_head = n_head
+
+        self.distance_expansion = GaussianSmearing(self.r_min, self.r_max, num_gaussians=50)
+
+        # self.num_h2x = 1
+        self.ew_net_type = 'r'
+        # self.h2x_layers = nn.ModuleList()
+        # for i in range(self.num_h2x):
+        # self.h2x_layers.append(
+        #     BaseH2XAttLayer(n_embd, n_embd, n_embd, n_heads=1, edge_feat_dim=0,
+        #                     r_feat_dim=50 * 4,
+        #                     act_fn='relu', norm=True,
+        #                     ew_net_type=self.ew_net_type)
+        # )
 
         if mode == 'concat':
             self.concat_proj = nn.Sequential(
@@ -54,17 +67,33 @@ class CrossAttention(nn.Module):
         else:
             raise ValueError('mode should be "concat" or "cross"')
 
-    def forward(self, x, batch_x, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross'):
+    def forward(self, x, batch_x, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross', edge_index=None, edge_type=None):
+        if edge_index is not None:
+            src, dst = edge_index
+            edge_feat = None
+
+            rel_x = x[dst] - x[src]
+            dist = torch.norm(rel_x, p=2, dim=-1, keepdim=True)
+
+            # for i in range(self.num_h2x):
+            dist_feat = self.distance_expansion(dist)
+            dist_feat = outer_product(edge_type, dist_feat)
+            # delta_x = self.h2x_layers[i](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
+            # delta_x = self.h2x_layers[0](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
+
         # unique_ids_x = batch_x.unique()
         # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
         # lengths_x = [seq.size(0) for seq in grouped_x]
         unique_ids_x = batch_encoder.unique()
-        x_lig = x[mask_ligand]
+        if edge_index is not None:
+            x_lig = dist_feat[mask_ligand]
+        else:
+            x_lig = x[mask_ligand]
         grouped_x = [x_lig[batch_encoder == uid] for uid in unique_ids_x]
         lengths_x = [seq.size(0) for seq in grouped_x]
         padded_x = pad_sequence(grouped_x, batch_first=True)
         B, T, C = padded_x.size()
-        if encoder_mask is not None and encoder_mask is not None:
+        if encoder_mask is not None:
             unique_ids_encoder = batch_encoder.unique()
             grouped_encoder = [encoder_embedding[batch_encoder == uid] for uid in unique_ids_encoder]
             lengths_encoder = [seq.size(0) for seq in grouped_encoder]
@@ -125,14 +154,19 @@ class CrossAttention(nn.Module):
                 cross_att = F.softmax(cross_att, dim=-1)
                 cross_att = self.attn_drop(cross_att)
 
-                cross_y = cross_att @ cross_v
-                cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
-
+                if edge_index is not None:
+                    cross_v = cross_v.unsqueeze(-1) * rel_x.unsqueeze(1)  # (xi - xj) [n_edges, n_heads, 3]
+                    cross_y = cross_att.unsqueeze(-1) @ cross_v
+                    cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
+                    output = scatter_sum(cross_y, dst, dim=0, dim_size=len())  # (N, heads, 3)
+                else:
+                    cross_y = cross_att @ cross_v
+                    output = cross_y.transpose(1, 2).contiguous().view(B, T, C)
             else:
                 raise ValueError('mode should be "concat" or "cross"')
 
         # output projection
-        y = self.resid_drop(self.proj(cross_y))
+        y = self.resid_drop(self.proj(output))
         y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
         return y_unpadded
 
@@ -454,7 +488,9 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                     h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                     h_new = h.clone()
                     h_new[mask_ligand] = h[mask_ligand] + h_g
-                    x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                    x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand,
+                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask,
+                                   edge_index=edge_index, edge_type=edge_type)
                     x_new = x.clone()
                     x_new[mask_ligand] = x[mask_ligand] + x_g
                     h, x = layer[0](h_new, x_new, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
