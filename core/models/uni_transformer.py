@@ -69,33 +69,44 @@ class CrossAttention(nn.Module):
         else:
             raise ValueError('mode should be "concat" or "cross"')
 
-    def forward(self, x, batch_x, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross', edge_index=None, edge_type=None):
+
+    def _connect_edge(self, x, batch):
+        edge_index = knn_graph(x, k=32, batch=batch, flow='source_to_target')
+        return edge_index
+
+
+    def forward(self, x, batch_ligand, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross', pos=False):
         # unique_ids_x = batch_x.unique()
         # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
         # lengths_x = [seq.size(0) for seq in grouped_x]
-        unique_ids_x = batch_encoder.unique()
+        unique_ids_x = batch_ligand.unique()
         x_lig = x[mask_ligand]
 
-        if edge_index is not None:
+        if pos:
+            edge_index = self._connect_edge(x, batch_ligand)
             src, dst = edge_index
             # edge_feat = None
 
             rel_x = x_lig[dst] - x_lig[src]
             dist = torch.norm(rel_x, p=2, dim=-1, keepdim=True)
 
+            edge_type = torch.zeros(len(src)).to(edge_index)
+
             # for i in range(self.num_h2x):
             dist_feat = self.distance_expansion(dist)
             dist_feat = outer_product(edge_type, dist_feat)
+            print(f"++++++++++++++++++++++++++{dist_feat.size()}++++++++++++++++++++++++++++")
+            print(f"++++++++++++++++++++++++++{x_lig.size()}++++++++++++++++++++++++++++")
             # delta_x = self.h2x_layers[i](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
             # delta_x = self.h2x_layers[0](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
 
-            grouped_x = [dist_feat[batch_encoder == uid] for uid in unique_ids_x]
+            grouped_x = [x_lig[batch_ligand == uid] for uid in unique_ids_x]
             lengths_x = [seq.size(0) for seq in grouped_x]
             padded_x = pad_sequence(grouped_x, batch_first=True)
             B, T, C = padded_x.size()
-            print(f"{B}, {T}, {C}")
+            print(f"++++++++++++++++++++++++++{padded_x.size()}++++++++++++++++++++++++++++")
         else:
-            grouped_x = [x_lig[batch_encoder == uid] for uid in unique_ids_x]
+            grouped_x = [x_lig[batch_ligand == uid] for uid in unique_ids_x]
             lengths_x = [seq.size(0) for seq in grouped_x]
             padded_x = pad_sequence(grouped_x, batch_first=True)
             B, T, C = padded_x.size()
@@ -160,7 +171,7 @@ class CrossAttention(nn.Module):
                 cross_att = F.softmax(cross_att, dim=-1)
                 cross_att = self.attn_drop(cross_att)
 
-                if edge_index is not None:
+                if pos:
                     cross_v = cross_v.unsqueeze(-1) * rel_x.unsqueeze(1)  # (xi - xj) [n_edges, n_heads, 3]
                     cross_y = cross_att.unsqueeze(-1) @ cross_v
                     cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
@@ -491,12 +502,11 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
 
             for l_idx, layer in enumerate(self.base_block):
                 if lig_embedding is not None:
-                    h_g = layer[1](x=h, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                    h_g = layer[1](x=h, batch_x=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                     h_new = h.clone()
                     h_new[mask_ligand] = h[mask_ligand] + h_g
-                    x_g = layer[2](x=x, batch_x=batch_all, batch_encoder=batch_lig, mask_ligand=mask_ligand,
-                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask,
-                                   edge_index=edge_index, edge_type=edge_type)
+                    x_g = layer[2](x=x, batch_x=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand,
+                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask, pos=True)
                     x_new = x.clone()
                     x_new[mask_ligand] = x[mask_ligand] + x_g
                     h, x = layer[0](h_new, x_new, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
