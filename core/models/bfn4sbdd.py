@@ -230,7 +230,8 @@ class BFN4SBDDScoreModel(BFNBase):
         # ---------------------
 
         # time = 2 * time - 1
-        lig_embedding += torch.normal(mean=0.0, std=0.05, size=lig_embedding.size())
+        if lig_embedding is not None:
+            lig_embedding += torch.normal(mean=0.0, std=0.05, size=lig_embedding.size())
         outputs = self.unio2net(
             h_all, pos_all, mask_ligand, batch_ligand, batch_all, lig_embedding, embedding_mask, return_all=return_all, fix_x=fix_x
         )
