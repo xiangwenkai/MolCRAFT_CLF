@@ -70,11 +70,17 @@ class CrossAttention(nn.Module):
             raise ValueError('mode should be "concat" or "cross"')
 
     def forward(self, x, batch_x, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross', edge_index=None, edge_type=None):
+        # unique_ids_x = batch_x.unique()
+        # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
+        # lengths_x = [seq.size(0) for seq in grouped_x]
+        unique_ids_x = batch_encoder.unique()
+        x_lig = x[mask_ligand]
+
         if edge_index is not None:
             src, dst = edge_index
-            edge_feat = None
+            # edge_feat = None
 
-            rel_x = x[dst] - x[src]
+            rel_x = x_lig[dst] - x_lig[src]
             dist = torch.norm(rel_x, p=2, dim=-1, keepdim=True)
 
             # for i in range(self.num_h2x):
@@ -83,18 +89,16 @@ class CrossAttention(nn.Module):
             # delta_x = self.h2x_layers[i](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
             # delta_x = self.h2x_layers[0](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
 
-        # unique_ids_x = batch_x.unique()
-        # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
-        # lengths_x = [seq.size(0) for seq in grouped_x]
-        unique_ids_x = batch_encoder.unique()
-        if edge_index is not None:
-            x_lig = dist_feat[mask_ligand]
+            grouped_x = [dist_feat[batch_encoder == uid] for uid in unique_ids_x]
+            lengths_x = [seq.size(0) for seq in grouped_x]
+            padded_x = pad_sequence(grouped_x, batch_first=True)
+            B, T, C = padded_x.size()
+            print(f"{B}, {T}, {C}")
         else:
-            x_lig = x[mask_ligand]
-        grouped_x = [x_lig[batch_encoder == uid] for uid in unique_ids_x]
-        lengths_x = [seq.size(0) for seq in grouped_x]
-        padded_x = pad_sequence(grouped_x, batch_first=True)
-        B, T, C = padded_x.size()
+            grouped_x = [x_lig[batch_encoder == uid] for uid in unique_ids_x]
+            lengths_x = [seq.size(0) for seq in grouped_x]
+            padded_x = pad_sequence(grouped_x, batch_first=True)
+            B, T, C = padded_x.size()
         if encoder_mask is not None:
             unique_ids_encoder = batch_encoder.unique()
             grouped_encoder = [encoder_embedding[batch_encoder == uid] for uid in unique_ids_encoder]
