@@ -321,7 +321,7 @@ class BFN4SBDDScoreModel(BFNBase):
         for idx, batch_id in enumerate(batch_ligand.tolist()):
             batch_groups[batch_id].append(idx)
 
-        mask = torch.ones(len(batch_ligand))
+        mask = torch.zeros(len(batch_ligand))
         cum = 0
         # 60% frag/link/scaffold mask; 15% random mask; 15% all mask; 10% not mask
         for group_id, group_indices in batch_groups.items():
@@ -332,31 +332,31 @@ class BFN4SBDDScoreModel(BFNBase):
                 else:
                     mask_indices = []
                 mask_indices_adjust = [x + cum for x in mask_indices]
-                mask[mask_indices_adjust] = 0
+                mask[mask_indices_adjust] = 1
             else:
                 rand = np.random.rand()
-                if rand < 0.6 and mask_indexes[group_id]:
+                if rand < 0.7 and mask_indexes[group_id]:
                     mask_indices = random.choice(mask_indexes[group_id])
                     if max(mask_indices) >= num_elements - 1:
                         mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
                         num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
                         mask_indices = np.random.choice(group_indices, num_to_mask,
                                                         replace=False)  # random mask position
-                        mask[mask_indices] = 0
+                        mask[mask_indices] = 1
                     else:
                         mask_indices_adjust = [x + cum for x in mask_indices]
-                        mask[mask_indices_adjust] = 0
+                        mask[mask_indices_adjust] = 1
                 else:
-                    rand = np.random.rand()
-                    if rand < 0.375:
-                        #  mask
-                        mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-                        num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
-                        mask_indices = np.random.choice(group_indices, num_to_mask,
-                                                        replace=False)  # random mask position
-                        mask[mask_indices] = 0
-                    elif rand < 0.625:
-                        mask[group_indices] = 0
+                    # rand = np.random.rand()
+                    # if rand < 0.375:
+                    #  mask
+                    mask_rate = random.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                    num_to_mask = max(int(num_elements * mask_rate), 1)  # number of mask
+                    mask_indices = np.random.choice(group_indices, num_to_mask,
+                                                    replace=False)  # random mask position
+                    mask[mask_indices] = 1
+                    # elif rand < 0.625:
+                    #     mask[group_indices] = 1
             cum += num_elements
             # print(f"cum: {cum}, num_elements: {num_elements}")
         return mask
