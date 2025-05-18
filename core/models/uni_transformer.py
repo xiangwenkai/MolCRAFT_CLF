@@ -1,53 +1,102 @@
 import numpy as np
 import math
+from math import sqrt
 import torch
-import torch.nn as nn
+from torch import nn, einsum
 import torch.nn.functional as F
 from torch_geometric.nn import radius_graph, knn_graph
 from torch_scatter import scatter_softmax, scatter_sum
 
 from core.models.common import GaussianSmearing, MLP, batch_hybrid_edge_connection, outer_product
 from torch.nn.utils.rnn import pad_sequence
+from se3_transformer_pytorch import SE3Transformer
+
+
+class LinearSE3(nn.Module):
+    def __init__(
+        self,
+        dim_in,
+        dim_out
+    ):
+        super().__init__()
+        self.weights = nn.ParameterDict()
+
+        self.weights['0']  = nn.Parameter(torch.randn(dim_in, dim_out) / sqrt(dim_in))
+
+    def forward(self, x):
+        out = {}
+        for degree, weight in self.weights.items():
+            out[degree] = einsum('b n d m, d e -> b n e m', x[degree], weight)
+        return out
+
 
 class CrossAttention(nn.Module):
     """
     add cross attention
     """
 
-    def __init__(self, input_dim, n_embd, out_dim, n_head, attn_pdrop=0.1, resid_pdrop=0.1, cross_pdrop=0.1, mode='cross'):
+    def __init__(self, input_dim, n_embd, out_dim, n_head, attn_pdrop=0.1, resid_pdrop=0.1, cross_pdrop=0.1, mode='cross', se3_module=False):
         super().__init__()
         assert n_embd % n_head == 0
 
-        # cross attention
-        self.cross_key = nn.Linear(out_dim, out_dim)
-        self.cross_query = nn.Linear(out_dim, out_dim)
-        self.cross_value = nn.Linear(out_dim, out_dim)
+        if se3_module:
+            se3_dim = 8
+            se3_dim_hidden = int(se3_dim*3)
+            # cross attention
+            self.cross_key = nn.Linear(se3_dim_hidden, se3_dim_hidden)
+            self.cross_query = nn.Linear(se3_dim_hidden, se3_dim_hidden)
+            self.cross_value = nn.Linear(se3_dim_hidden, se3_dim_hidden)
+        else:
+            # cross attention
+            self.cross_key = nn.Linear(n_embd, n_embd)
+            self.cross_query = nn.Linear(n_embd, n_embd)
+            self.cross_value = nn.Linear(n_embd, n_embd)
+
 
         # regularization
         self.attn_drop = nn.Dropout(attn_pdrop)
         self.resid_drop = nn.Dropout(resid_pdrop)
         self.cross_crop = nn.Dropout(cross_pdrop)
         # output projection
-        self.proj = nn.Linear(out_dim, out_dim)
+        if se3_module is False:
+            self.proj = nn.Linear(out_dim, out_dim)
+        self.hidden_dim = n_embd
 
         num = 0
 
         self.n_head = n_head
 
-        self.r_min = 0.
-        self.r_max = 10.
-        self.distance_expansion = GaussianSmearing(self.r_min, self.r_max, num_gaussians=50)
-
-        # self.num_h2x = 1
-        self.ew_net_type = 'r'
-        # self.h2x_layers = nn.ModuleList()
-        # for i in range(self.num_h2x):
-        # self.h2x_layers.append(
-        #     BaseH2XAttLayer(n_embd, n_embd, n_embd, n_heads=1, edge_feat_dim=0,
-        #                     r_feat_dim=50 * 4,
-        #                     act_fn='relu', norm=True,
-        #                     ew_net_type=self.ew_net_type)
-        # )
+        if se3_module:
+            self.feat_proj = nn.Sequential(
+                nn.Linear(n_embd, se3_dim),
+                nn.GELU(),
+                nn.Linear(se3_dim, se3_dim),
+                nn.LayerNorm(se3_dim),
+                nn.Dropout(0.1),
+            )
+            self.se3 = SE3Transformer(
+                                    dim = se3_dim,
+                                    heads = 1,
+                                    depth = 1,
+                                    input_degrees=1,
+                                    dim_head = 8,
+                                    num_degrees = 2,
+                                    valid_radius = 10,
+                                    output_degrees=2,
+                                    reduce_dim_out=True,  # if true, output dim is (..., 3)
+                                )
+            self.linear_out = SE3Transformer(
+                                    dim = se3_dim,
+                                    heads = 1,
+                                    depth = 1,
+                                    input_degrees=1,
+                                    dim_head = 8,
+                                    num_degrees = 2,
+                                    valid_radius = 10,
+                                    output_degrees=2,
+                                    reduce_dim_out=True,  # if true, output dim is (..., 3)
+                                ).linear_out
+            self.se3.linear_out = nn.Identity()
 
         if mode == 'concat':
             self.concat_proj = nn.Sequential(
@@ -59,57 +108,63 @@ class CrossAttention(nn.Module):
             )
 
         elif mode == 'cross':
-            self.cross_attn_proj = nn.Sequential(
-                nn.Linear(input_dim, n_embd),
-                nn.GELU(),
-                nn.Linear(n_embd, out_dim),
-                nn.LayerNorm(out_dim),
-                nn.Dropout(cross_pdrop),
-            )
+            if se3_module:
+                self.cross_attn_proj = nn.Sequential(
+                    nn.Linear(input_dim, se3_dim_hidden),
+                    nn.GELU(),
+                    nn.Linear(se3_dim_hidden, se3_dim_hidden),
+                    nn.LayerNorm(se3_dim_hidden),
+                    nn.Dropout(cross_pdrop),
+                )
+            else:
+                self.cross_attn_proj = nn.Sequential(
+                    nn.Linear(input_dim, n_embd),
+                    nn.GELU(),
+                    nn.Linear(n_embd, n_embd),
+                    nn.LayerNorm(n_embd),
+                    nn.Dropout(cross_pdrop),
+                )
         else:
             raise ValueError('mode should be "concat" or "cross"')
 
+    def map_values(self, fn, d):
+        return {k: fn(v) for k, v in d.items()}
 
-    def _connect_edge(self, x, batch):
-        edge_index = knn_graph(x, k=32, batch=batch, flow='source_to_target')
-        return edge_index
-
-
-    def forward(self, x, batch_ligand, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross', pos=False):
+    def forward(self, x, batch_ligand, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross', feats=None):
         # unique_ids_x = batch_x.unique()
         # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
         # lengths_x = [seq.size(0) for seq in grouped_x]
         unique_ids_x = batch_ligand.unique()
         x_lig = x[mask_ligand]
 
-        if pos:
-            edge_index = self._connect_edge(x, batch_ligand)
-            src, dst = edge_index
-            # edge_feat = None
-
-            rel_x = x_lig[dst] - x_lig[src]
-            dist = torch.norm(rel_x, p=2, dim=-1, keepdim=True)
-
-            edge_type = torch.zeros(len(src)).to(edge_index)
-
-            # for i in range(self.num_h2x):
-            dist_feat = self.distance_expansion(dist)
-            dist_feat = outer_product(edge_type, dist_feat)
-            print(f"++++++++++++++++++++++++++{dist_feat.size()}++++++++++++++++++++++++++++")
-            print(f"++++++++++++++++++++++++++{x_lig.size()}++++++++++++++++++++++++++++")
-            # delta_x = self.h2x_layers[i](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
-            # delta_x = self.h2x_layers[0](h, rel_x, dist_feat, edge_feat, edge_index, e_w=e_w)
-
+        if feats is not None:
             grouped_x = [x_lig[batch_ligand == uid] for uid in unique_ids_x]
             lengths_x = [seq.size(0) for seq in grouped_x]
             padded_x = pad_sequence(grouped_x, batch_first=True)
-            B, T, C = padded_x.size()
-            print(f"++++++++++++++++++++++++++{padded_x.size()}++++++++++++++++++++++++++++")
+
+            feats = feats[mask_ligand]
+            feats = self.feat_proj(feats)
+            group_feats = [feats[batch_ligand == uid] for uid in unique_ids_x]
+            padded_feats = pad_sequence(group_feats, batch_first=True)
+
+            mask = torch.ones((padded_x.size(0), padded_x.size(1))).bool().to(x_lig.device)
+            output = self.se3(padded_feats, padded_x, mask)  # (1, 128)
+
+            output['0'] = output['0'].unsqueeze(dim=-1)
+            # output1 = self.linear_out(output)
+            Q_input = output['1'].clone().view(output['1'].size(0), output['1'].size(1), -1)
+            B, T, C = Q_input.size()
+
+            # feats = torch.randn(4, 33, 128)
+            # coors = torch.randn(4, 33, 3)
+            # mask = torch.ones(4, 33).bool()
+            # out = model(feats, coors, mask)  #
+
         else:
             grouped_x = [x_lig[batch_ligand == uid] for uid in unique_ids_x]
             lengths_x = [seq.size(0) for seq in grouped_x]
-            padded_x = pad_sequence(grouped_x, batch_first=True)
-            B, T, C = padded_x.size()
+            Q_input = pad_sequence(grouped_x, batch_first=True)
+            B, T, C = Q_input.size()
         if encoder_mask is not None:
             unique_ids_encoder = batch_encoder.unique()
             grouped_encoder = [encoder_embedding[batch_encoder == uid] for uid in unique_ids_encoder]
@@ -154,7 +209,7 @@ class CrossAttention(nn.Module):
                 padded_encoder = self.cross_attn_proj(padded_encoder)
                 # key, query, value
                 cross_k = self.cross_key(padded_encoder).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
-                cross_q = self.cross_query(padded_x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_q = self.cross_query(Q_input).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
                 cross_v = self.cross_value(padded_encoder).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
 
                 # calculate cross attention weights
@@ -171,21 +226,28 @@ class CrossAttention(nn.Module):
                 cross_att = F.softmax(cross_att, dim=-1)
                 cross_att = self.attn_drop(cross_att)
 
-                if pos:
-                    cross_v = cross_v.unsqueeze(-1) * rel_x.unsqueeze(1)  # (xi - xj) [n_edges, n_heads, 3]
-                    cross_y = cross_att.unsqueeze(-1) @ cross_v
+                if feats is not None:
+                    cross_y = cross_att @ cross_v
                     cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
-                    output = scatter_sum(cross_y, dst, dim=0, dim_size=len())  # (N, heads, 3)
+                    # output['0'] = cross_y.unsqueeze(dim=-1)
+                    output['1'] = cross_y.view(output['1'].size())
+                    output = self.linear_out(output)
+                    output = self.map_values(lambda t: t.squeeze(dim=2), output)
+                    cross_y = output['1']
+
                 else:
                     cross_y = cross_att @ cross_v
-                    output = cross_y.transpose(1, 2).contiguous().view(B, T, C)
+                    cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
             else:
                 raise ValueError('mode should be "concat" or "cross"')
-
-        # output projection
-        y = self.resid_drop(self.proj(output))
-        y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
-        return y_unpadded
+        if feats is not None:
+            y_unpadded = torch.cat([cross_y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
+            return y_unpadded
+        else:
+            # output projection
+            y = self.resid_drop(self.proj(cross_y))
+            y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
+            return y_unpadded
 
 
 class BaseX2HAttLayer(nn.Module):
@@ -452,7 +514,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 ew_net_type=self.ew_net_type, x2h_out_fc=self.x2h_out_fc, sync_twoup=self.sync_twoup,
             )
             h_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=self.hidden_dim, n_head=max(int(self.n_heads/2), 1))  # input_dim is the lig embedding dim
-            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=128, out_dim=3, n_head=1)
+            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/2), 1), se3_module=True)
             base_block.append(nn.Sequential(layer, h_cross_atten_layer, x_cross_atten_layer))
         return nn.ModuleList(base_block)
 
@@ -502,11 +564,11 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
 
             for l_idx, layer in enumerate(self.base_block):
                 if lig_embedding is not None:
-                    h_g = layer[1](x=h, batch_x=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                    h_g = layer[1](x=h, batch_ligand=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                     h_new = h.clone()
                     h_new[mask_ligand] = h[mask_ligand] + h_g
-                    x_g = layer[2](x=x, batch_x=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand,
-                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask, pos=True)
+                    x_g = layer[2](x=x, batch_ligand=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand,
+                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask, feats=h)
                     x_new = x.clone()
                     x_new[mask_ligand] = x[mask_ligand] + x_g
                     h, x = layer[0](h_new, x_new, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
