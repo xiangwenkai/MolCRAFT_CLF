@@ -470,7 +470,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
         return layer
 
     def _build_share_blocks(self):
-        equi_dim = 32
+        equi_dim = 16
         equi = Equiformer(
                         num_tokens=13,
                         dim=equi_dim,               # dimensions per type, ascending, length must match number of degrees (num_degrees)
