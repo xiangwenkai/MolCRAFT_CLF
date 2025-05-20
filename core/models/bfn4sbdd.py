@@ -112,15 +112,21 @@ class BFN4SBDDScoreModel(BFNBase):
         net_config = Struct(**net_config)
         self.config = net_config
 
-        self.cond_rate = cond_rate # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
-
-        if net_config.name == 'unio2net':
-            self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict())
-        else:
-            raise NotImplementedError
-        
         self.hidden_dim = net_config.hidden_dim
         self.num_classes = ligand_atom_feature_dim
+
+        self.cond_rate = cond_rate # default from https://github.com/coderpiaobozhe/classifier-free-diffusion-guidance-Pytorch/blob/master/train.py
+
+        self.v_inference = nn.Sequential(
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            ShiftedSoftplus(),
+            nn.Linear(self.hidden_dim, ligand_atom_feature_dim),
+        )  # [hidden to 13]
+
+        if net_config.name == 'unio2net':
+            self.unio2net = UniTransformerO2TwoUpdateGeneral(**net_config.todict(), v_inference=self.v_inference)
+        else:
+            raise NotImplementedError
 
         self.node_indicator = node_indicator
 
@@ -140,13 +146,6 @@ class BFN4SBDDScoreModel(BFNBase):
         self.ligand_atom_emb = nn.Linear(
             ligand_atom_feature_dim + self.time_emb_dim, emb_dim
         )
-
-        self.v_inference = nn.Sequential(
-            nn.Linear(self.hidden_dim, self.hidden_dim),
-            ShiftedSoftplus(),
-            nn.Linear(self.hidden_dim, ligand_atom_feature_dim),
-        )  # [hidden to 13]
-
 
         self.device = device
         self._edges_dict = {}
