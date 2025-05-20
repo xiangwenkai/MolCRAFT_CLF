@@ -512,8 +512,8 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 num_x2h=self.num_x2h, num_h2x=self.num_h2x, r_max=self.r_max, num_node_types=self.num_node_types,
                 ew_net_type=self.ew_net_type, x2h_out_fc=self.x2h_out_fc, sync_twoup=self.sync_twoup,
             )
-            h_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=self.hidden_dim, n_head=max(int(self.n_heads/2), 1))  # input_dim is the lig embedding dim
-            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/2), 1), equi_module=equi, lin_out=linear_out, v_inference=self.v_inference, equi_dim=equi_dim)
+            h_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=self.hidden_dim, n_head=max(int(self.n_heads/4), 1))  # input_dim is the lig embedding dim
+            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/4), 1), equi_module=equi, lin_out=linear_out, v_inference=self.v_inference, equi_dim=equi_dim)
             base_block.append(nn.Sequential(layer, h_cross_atten_layer, x_cross_atten_layer))
         return nn.ModuleList(base_block)
 
