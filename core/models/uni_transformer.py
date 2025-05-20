@@ -183,7 +183,7 @@ class CrossAttention(nn.Module):
                     # expand mask to match attention score shape (B, 1, 1, S)
                     encoder_mask = encoder_mask.unsqueeze(1).unsqueeze(2)
                     # set the attention score of padding position to negative infinity
-                    cross_att = cross_att.masked_fill(encoder_mask == 0, -1e-10)
+                    cross_att = cross_att.masked_fill(encoder_mask == 0, -1e10)
 
                 # softmax
                 cross_att = F.softmax(cross_att, dim=-1)
