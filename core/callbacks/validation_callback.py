@@ -321,7 +321,7 @@ class VisualizeMolAndTrajCallback(Callback):
             batch.ligand_pos = batch.ligand_pos / pos_normalizer
 
             # prepare batch data
-            protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, ligand_embedding, mask_indexes = (
+            protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, ligand_embedding, batch_emb, mask_indexes = (
                 batch.protein_pos, 
                 batch.protein_atom_feature.float(), 
                 batch.protein_element_batch, 
@@ -329,6 +329,7 @@ class VisualizeMolAndTrajCallback(Callback):
                 batch.ligand_atom_feature_full, 
                 batch.ligand_element_batch,
                 batch.ligand_embedding,
+                batch.batch_lig_emb,
                 batch.mask_indexes
             )
 
@@ -344,6 +345,7 @@ class VisualizeMolAndTrajCallback(Callback):
                 batch_ligand=batch_ligand,
                 n_nodes=num_graphs,
                 lig_emb=ligand_embedding,
+                batch_emb=batch_emb,
                 mask_indexes=mask_indexes,
                 ligand_pos=ligand_pos, # for debug only
                 sample_steps=pl_module.cfg.evaluation.sample_steps,

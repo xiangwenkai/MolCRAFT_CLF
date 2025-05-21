@@ -542,7 +542,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
         edge_type = F.one_hot(edge_type, num_classes=4)
         return edge_type
 
-    def forward(self, h, x, mask_ligand, batch_lig, batch_all, lig_embedding, embedding_mask, return_all=False, fix_x=False):
+    def forward(self, h, x, mask_ligand, batch_lig, batch_all, lig_embedding, batch_emb, embedding_mask, return_all=False, fix_x=False):
 
         all_x = [x]
         all_h = [h]
@@ -563,10 +563,10 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
 
             for l_idx, layer in enumerate(self.base_block):
                 if lig_embedding is not None:
-                    h_g = layer[1](x=h, batch_ligand=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
+                    h_g = layer[1](x=h, batch_ligand=batch_lig, batch_encoder=batch_emb, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                     h_new = h.clone()
                     h_new[mask_ligand] = h[mask_ligand] + h_g
-                    x_g = layer[2](x=x, batch_ligand=batch_lig, batch_encoder=batch_lig, mask_ligand=mask_ligand,
+                    x_g = layer[2](x=x, batch_ligand=batch_lig, batch_encoder=batch_emb, mask_ligand=mask_ligand,
                                    encoder_embedding=lig_embedding, encoder_mask=embedding_mask, feats=h)
                     x_new = x.clone()
                     x_new[mask_ligand] = x[mask_ligand] + x_g
