@@ -479,7 +479,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
         return layer
 
     def _build_share_blocks(self):
-        se3_dim = 12
+        se3_dim = 8
         equi = SE3Transformer(
                             dim = se3_dim,
                             heads = 1,
