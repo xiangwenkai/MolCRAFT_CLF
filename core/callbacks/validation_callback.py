@@ -157,7 +157,7 @@ class ValidationCallback(Callback):
                 batch.protein_pos = batch.protein_pos / pos_normalizer
                 batch.ligand_pos = batch.ligand_pos / pos_normalizer
 
-                protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, ligand_embedding, mask_indexes = (
+                protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, ligand_embedding, batch_emb, mask_indexes = (
                     batch.protein_pos, 
                     batch.protein_atom_feature.float(), 
                     batch.protein_element_batch, 
@@ -165,6 +165,7 @@ class ValidationCallback(Callback):
                     batch.ligand_atom_feature_full, 
                     batch.ligand_element_batch,
                     batch.lig_emb,
+                    batch.lig_emb_batch,
                     batch.mask_indexes,
                 )
                 # move protein center to origin & ligand correspondingly
@@ -195,6 +196,7 @@ class ValidationCallback(Callback):
                         ligand_v=ligand_v,
                         batch_ligand=batch_ligand,
                         lig_embedding=ligand_embedding,
+                        batch_emb=batch_emb,
                         mask_indexes=mask_indexes
                     )
                     loss = torch.mean(c_loss + pl_module.cfg.train.v_loss_weight * d_loss + discretised_loss)

@@ -309,11 +309,12 @@ class BFN4SBDDScoreModel(BFNBase):
         ligand_v,
         batch_ligand,
         lig_embedding,
+        batch_emb,
         mask_indexes,
     ):
         # TODO: implement reconstruction loss (but do we really need it?)
         return self.loss_one_step(
-            t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_embedding, mask_indexes
+            t, protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_embedding, batch_emb, mask_indexes
         )
 
     def get_emb_mask(self, batch_emb, mask_indexes, mask_strategy='random'):
