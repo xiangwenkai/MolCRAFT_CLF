@@ -47,7 +47,7 @@ class SBDDTrainLoop(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         t1 = time()
-        protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_emb, mask_indexes = (
+        protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_emb, batch_emb, mask_indexes = (
             batch.protein_pos,
             batch.protein_atom_feature.float(),
             batch.protein_element_batch,
@@ -55,7 +55,8 @@ class SBDDTrainLoop(pl.LightningModule):
             batch.ligand_atom_feature_full,
             batch.ligand_element_batch,
             batch.lig_emb,
-            batch.mask_indexes
+            batch.lig_emb_batch,
+            batch.mask_indexes,
         )  # get the data from the batch
         # batch is a data object
         # protein_pos: [N_pro,3]
@@ -114,6 +115,7 @@ class SBDDTrainLoop(pl.LightningModule):
             ligand_v=ligand_v,
             batch_ligand=batch_ligand,
             lig_embedding=lig_emb,
+            batch_emb=batch_emb,
             mask_indexes=mask_indexes,
         )
 
@@ -182,7 +184,7 @@ class SBDDTrainLoop(pl.LightningModule):
 
     def shared_sampling_step(self, batch, batch_idx, sample_num_atoms, desc='', mask_strategy='random'):
         # here we need to sample the molecules in the validation step
-        protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_emb, mask_indexes = (
+        protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_emb, batch_emb, mask_indexes = (
             batch.protein_pos,
             batch.protein_atom_feature.float(),
             batch.protein_element_batch,
@@ -190,6 +192,7 @@ class SBDDTrainLoop(pl.LightningModule):
             batch.ligand_atom_feature_full,
             batch.ligand_element_batch,
             batch.lig_emb,
+            batch.batch_lig_emb,
             batch.mask_indexes,
         )
         num_graphs = batch_protein.max().item() + 1  # B
@@ -233,6 +236,7 @@ class SBDDTrainLoop(pl.LightningModule):
             batch_ligand=batch_ligand,
             # n_nodes=n_nodes,
             lig_emb=lig_emb,
+            batch_emb=batch_emb,
             mask_indexes=mask_indexes,
             sample_steps=self.cfg.evaluation.sample_steps,
             n_nodes=num_graphs,
