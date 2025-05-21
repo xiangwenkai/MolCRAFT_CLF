@@ -9,8 +9,8 @@ from torch_scatter import scatter_softmax, scatter_sum
 
 from core.models.common import GaussianSmearing, MLP, batch_hybrid_edge_connection, outer_product
 from torch.nn.utils.rnn import pad_sequence
-# from se3_transformer_pytorch import SE3Transformer
-from equiformer_pytorch import Equiformer
+from se3_transformer_pytorch import SE3Transformer
+# from equiformer_pytorch import Equiformer
 from einops import rearrange
 
 
@@ -113,7 +113,7 @@ class CrossAttention(nn.Module):
             mask = torch.ones((padded_x.size(0), padded_x.size(1))).bool().to(x_lig.device)
             output = self.equi(padded_feats, padded_x, mask)  # (1, 128)
 
-            # output['0'] = output['0'].unsqueeze(dim=-1)
+            output['0'] = output['0'].unsqueeze(dim=-1)
             # output1 = self.linear_out(output)
             Q_input = output[1].clone().reshape(output[1].size(0), output[1].size(1), -1)
             B, T, C = Q_input.size()
@@ -200,12 +200,13 @@ class CrossAttention(nn.Module):
                 if feats is not None:
                     cross_y = cross_att @ cross_v
                     cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
+                    # output1 = self.linear_out({0: rearrange(output.type0, '... -> ... 1'), 1: cross_y.view(output[1].size())})
+                    # output1 = {k: rearrange(v, '... 1 c -> ... c') for k, v in output1.items()}
                     # output['0'] = cross_y.unsqueeze(dim=-1)
-                    # output['1'] = cross_y.view(output['1'].size())
-                    # output = self.map_values(lambda t: t.squeeze(dim=2), output)
-                    output1 = self.linear_out({0: rearrange(output.type0, '... -> ... 1'), 1: cross_y.view(output[1].size())})
-                    output1 = {k: rearrange(v, '... 1 c -> ... c') for k, v in output1.items()}
-                    cross_y = output1[1]
+                    output['1'] = cross_y.view(output['1'].size())
+                    output = self.linear_out(output)
+                    output = self.map_values(lambda t: t.squeeze(dim=2), output)
+                    cross_y = output['1']
 
                 else:
                     cross_y = cross_att @ cross_v
@@ -478,31 +479,29 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
         return layer
 
     def _build_share_blocks(self):
-        equi_dim = 12
-        equi = Equiformer(
-                        num_tokens=13,
-                        dim=equi_dim,               # dimensions per type, ascending, length must match number of degrees (num_degrees)
-                        # dim_head = (4, 4, 4),          # dimension per attention head
-                        # heads = (2, 2, 2),             # number of attention heads
-                        num_linear_attn_heads=0,     # number of global linear attention heads, can see all the neighbors
-                        num_degrees=2,               # number of degrees
-                        depth=2,                     # depth of equivariant transformer
-                        attend_self=True,            # attending to self or not
-                        reduce_dim_out=False,         # whether to reduce out to dimension of 1, say for predicting new coordinates for type 1 features
-                        l2_dist_attention=False      # set to False to try out MLP attention
-                    )
-        linear_out = Equiformer(
-                                num_tokens=13,
-                                dim=equi_dim,               # dimensions per type, ascending, length must match number of degrees (num_degrees)
-                                # dim_head = (4, 4, 4),          # dimension per attention head
-                                # heads = (2, 2, 2),             # number of attention heads
-                                num_linear_attn_heads=0,     # number of global linear attention heads, can see all the neighbors
-                                num_degrees=2,               # number of degrees
-                                depth=2,                     # depth of equivariant transformer
-                                attend_self=True,            # attending to self or not
-                                reduce_dim_out=True,         # whether to reduce out to dimension of 1, say for predicting new coordinates for type 1 features
-                                l2_dist_attention=False      # set to False to try out MLP attention
-                            ).ff_out
+        se3_dim = 12
+        equi = SE3Transformer(
+                            dim = se3_dim,
+                            heads = 1,
+                            depth = 1,
+                            input_degrees=1,
+                            dim_head = 8,
+                            num_degrees = 2,
+                            valid_radius = 10,
+                            output_degrees=2,
+                            reduce_dim_out=True,  # if true, output dim is (..., 3)
+                                )
+        linear_out = SE3Transformer(
+                                    dim = se3_dim,
+                                    heads = 1,
+                                    depth = 1,
+                                    input_degrees=1,
+                                    dim_head = 8,
+                                    num_degrees = 2,
+                                    valid_radius = 10,
+                                    output_degrees=2,
+                                    reduce_dim_out=True,  # if true, output dim is (..., 3)
+                                ).linear_out
         # Equivariant layers
         base_block = []
         for l_idx in range(self.num_layers):
@@ -513,7 +512,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 ew_net_type=self.ew_net_type, x2h_out_fc=self.x2h_out_fc, sync_twoup=self.sync_twoup,
             )
             h_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=self.hidden_dim, n_head=max(int(self.n_heads/4), 1))  # input_dim is the lig embedding dim
-            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/4), 1), equi_module=equi, lin_out=linear_out, v_inference=self.v_inference, equi_dim=equi_dim)
+            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/4), 1), equi_module=equi, lin_out=linear_out, v_inference=self.v_inference, equi_dim=se3_dim)
             base_block.append(nn.Sequential(layer, h_cross_atten_layer, x_cross_atten_layer))
         return nn.ModuleList(base_block)
 
