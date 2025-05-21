@@ -20,7 +20,7 @@ class CrossAttention(nn.Module):
     """
 
     def __init__(self, input_dim, n_embd, out_dim, n_head, attn_pdrop=0.1, resid_pdrop=0.1, cross_pdrop=0.1,
-                 mode='cross', equi_module=None, lin_out=None, v_inference=None, equi_dim=32):
+                 mode='cross', equi_module=None, lin_out=None, v_inference=None, feat_proj=None, equi_dim=32):
         super().__init__()
         assert n_embd % n_head == 0
 
@@ -55,6 +55,8 @@ class CrossAttention(nn.Module):
 
         if equi_module is not None:
             self.equi = equi_module
+        if feat_proj is not None:
+            self.feat_proj = feat_proj
         if lin_out is not None:
             self.linear_out = lin_out
 
@@ -103,11 +105,11 @@ class CrossAttention(nn.Module):
             padded_x = pad_sequence(grouped_x, batch_first=True)
 
             feats = feats[mask_ligand]
-            feats_h = self.v_inference(feats)
-            feats_h = torch.nn.functional.softmax(feats_h, dim=-1)
-            feats_h = torch.distributions.Categorical(feats_h).sample()
-            # feats = self.feat_proj(feats)
-            group_feats = [feats_h[batch_ligand == uid] for uid in unique_ids_x]
+            # feats_h = self.v_inference(feats)
+            # feats_h = torch.nn.functional.softmax(feats_h, dim=-1)
+            # feats_h = torch.distributions.Categorical(feats_h).sample()
+            feats = self.feat_proj(feats)
+            group_feats = [feats[batch_ligand == uid] for uid in unique_ids_x]
             padded_feats = pad_sequence(group_feats, batch_first=True)
 
             mask = torch.ones((padded_x.size(0), padded_x.size(1))).bool().to(x_lig.device)
@@ -115,7 +117,7 @@ class CrossAttention(nn.Module):
 
             output['0'] = output['0'].unsqueeze(dim=-1)
             # output1 = self.linear_out(output)
-            Q_input = output[1].clone().reshape(output[1].size(0), output[1].size(1), -1)
+            Q_input = output['1'].clone().reshape(output['1'].size(0), output['1'].size(1), -1)
             B, T, C = Q_input.size()
 
             # feats = torch.randn(4, 33, 128)
@@ -455,7 +457,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
         self.r_max = r_max
         self.x2h_out_fc = x2h_out_fc
         self.sync_twoup = sync_twoup
-        self.v_inference = v_inference
+        self.v_inference = None
         self.distance_expansion = GaussianSmearing(0., r_max, num_gaussians=num_r_gaussian)
         if self.ew_net_type == 'global':
             self.edge_pred_layer = MLP(num_r_gaussian, 1, hidden_dim)
@@ -480,6 +482,13 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
 
     def _build_share_blocks(self):
         se3_dim = 8
+        feat_proj = nn.Sequential(
+            nn.Linear(self.hidden_dim, se3_dim),
+            nn.GELU(),
+            nn.Linear(se3_dim, se3_dim),
+            nn.LayerNorm(se3_dim),
+            nn.Dropout(0.1),
+        )
         equi = SE3Transformer(
                             dim = se3_dim,
                             heads = 1,
@@ -489,7 +498,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                             num_degrees = 2,
                             valid_radius = 10,
                             output_degrees=2,
-                            reduce_dim_out=True,  # if true, output dim is (..., 3)
+                            reduce_dim_out=False,  # if true, output dim is (..., 3)
                                 )
         linear_out = SE3Transformer(
                                     dim = se3_dim,
@@ -512,7 +521,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 ew_net_type=self.ew_net_type, x2h_out_fc=self.x2h_out_fc, sync_twoup=self.sync_twoup,
             )
             h_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=self.hidden_dim, n_head=max(int(self.n_heads/4), 1))  # input_dim is the lig embedding dim
-            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/4), 1), equi_module=equi, lin_out=linear_out, v_inference=self.v_inference, equi_dim=se3_dim)
+            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/4), 1), equi_module=equi, lin_out=linear_out, v_inference=self.v_inference, equi_dim=se3_dim, feat_proj=feat_proj)
             base_block.append(nn.Sequential(layer, h_cross_atten_layer, x_cross_atten_layer))
         return nn.ModuleList(base_block)
 
