@@ -192,7 +192,7 @@ class SBDDTrainLoop(pl.LightningModule):
             batch.ligand_atom_feature_full,
             batch.ligand_element_batch,
             batch.lig_emb,
-            batch.batch_lig_emb,
+            batch.lig_emb_batch,
             batch.mask_indexes,
         )
         num_graphs = batch_protein.max().item() + 1  # B
