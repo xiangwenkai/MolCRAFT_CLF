@@ -553,15 +553,18 @@ class DockingTestCallback(Callback):
         os.makedirs(bad_case_dir, exist_ok=True)
         print(f'bad cases dumped to {bad_case_dir}')
 
-        out_metrics = self.metric.evaluate(results, bad_case_dir)
-        torch.save(results, os.path.join(path, f'vina_docked.pt'))
-        out_metrics.update(recon_dict)
-        out_metrics = {f'test/{k}': v for k, v in out_metrics.items()}
-        pl_module.log_dict(out_metrics)
+        try:
+            out_metrics = self.metric.evaluate(results, bad_case_dir)
+            torch.save(results, os.path.join(path, f'vina_docked.pt'))
+            out_metrics.update(recon_dict)
+            out_metrics = {f'test/{k}': v for k, v in out_metrics.items()}
+            pl_module.log_dict(out_metrics)
 
-        out_metrics['ckpt_path'] = pl_module.cfg.evaluation.ckpt_path
-        out_metrics['test_outputs_dir'] = path
-        out_metrics['sample_num_atoms'] = pl_module.cfg.evaluation.sample_num_atoms
-        print(json.dumps(out_metrics, indent=4))
-        json.dump(out_metrics, open(os.path.join(path, 'metrics.json'), 'w'), indent=4)
+            out_metrics['ckpt_path'] = pl_module.cfg.evaluation.ckpt_path
+            out_metrics['test_outputs_dir'] = path
+            out_metrics['sample_num_atoms'] = pl_module.cfg.evaluation.sample_num_atoms
+            print(json.dumps(out_metrics, indent=4))
+            json.dump(out_metrics, open(os.path.join(path, 'metrics.json'), 'w'), indent=4)
+        except:
+            print("valid error!!!!!!!!!!!!!!!!!!(core/callbacks/validation_callback.py)")
 
