@@ -19,12 +19,16 @@ warnings.filterwarnings("ignore")
 random.seed(42)
 
 # environment: fgdd
-db = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_origin.lmdb', map_size=10 * (1024 * 1024 * 1024),
+# db = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_origin.lmdb', map_size=10 * (1024 * 1024 * 1024),
+#                create=False,subdir=False,readonly=True,lock=False,readahead=False,meminit=False)
+db = lmdb.open('/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10_processed_final.lmdb', map_size=10 * (1024 * 1024 * 1024),
                create=False,subdir=False,readonly=True,lock=False,readahead=False,meminit=False)
 with db.begin() as txn:
     keys = list(txn.cursor().iternext(values=False))
 
-db_new = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_emb.lmdb',map_size=50 * (1024 * 1024 * 1024),  # 80GB
+# db_new = lmdb.open('/data/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_emb.lmdb',map_size=50 * (1024 * 1024 * 1024),  # 80GB
+#                    create=False,subdir=False,readonly=False,lock=False,readahead=False,meminit=False)
+db_new = lmdb.open('/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10_processed_final_emb.lmdb',map_size=10 * (1024 * 1024 * 1024),  # 80GB
                    create=False,subdir=False,readonly=False,lock=False,readahead=False,meminit=False)
 txn_new = db_new.begin(write=True, buffers=True)
 
@@ -33,7 +37,8 @@ txn_new = db_new.begin(write=True, buffers=True)
 # key = keys[idx]
 # data = pickle.loads(db.begin().get(key))
 
-crossdock_path = '/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10'
+# crossdock_path = '/data/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10'
+crossdock_path = '/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10'
 clf = UniMolRepr(data_type='molecule',
                  remove_hs=True,
                  model_name='unimolv1', # avaliable: unimolv1, unimolv2
@@ -55,7 +60,7 @@ for key in keys:
         except:
             pass
         # Chem.SanitizeMol(mol)
-        mol.UpdatePropertyCache(strict=False)
+        # mol.UpdatePropertyCache(strict=False)
         atoms = []
         coordinates = []
         postions = mol.GetConformer().GetPositions()

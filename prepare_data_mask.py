@@ -253,19 +253,23 @@ class Mask():
 
 
 if __name__ == "__main__":
-    db = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_emb.lmdb', map_size=10 * (1024 * 1024 * 1024),
-                   create=False,subdir=False,readonly=True,lock=False,readahead=False,meminit=False)
+    # db = lmdb.open('/data/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_emb.lmdb', map_size=10 * (1024 * 1024 * 1024),
+    #                create=False,subdir=False,readonly=True,lock=False,readahead=False,meminit=False)
+    db = lmdb.open('/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10_processed_final_emb.lmdb',
+                   map_size=10 * (1024 * 1024 * 1024),
+                   create=False, subdir=False, readonly=True, lock=False, readahead=False, meminit=False)
     with db.begin() as txn:
         keys = list(txn.cursor().iternext(values=False))
 
-    db_new = lmdb.open('/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_mask.lmdb',map_size=50 * (1024 * 1024 * 1024),  # 80GB
-                       create=False,subdir=False,readonly=False,lock=False,readahead=False,meminit=False)
+    # db_new = lmdb.open('/data/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10_processed_final_mask.lmdb',map_size=50 * (1024 * 1024 * 1024),  # 80GB
+    #                    create=False,subdir=False,readonly=False,lock=False,readahead=False,meminit=False)
+    db_new = lmdb.open('/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10_processed_final_mask.lmdb',
+                       map_size=15 * (1024 * 1024 * 1024),
+                       create=False, subdir=False, readonly=False, lock=False, readahead=False, meminit=False)
     txn_new = db_new.begin(write=True, buffers=True)
 
-    # idx=1
-    # key = keys[idx]
-    # data = pickle.loads(db.begin().get(key))
-    crossdock_path = '/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10'
+    # crossdock_path = '/data4/wenkai/MolCRAFT_CLF/data/crossdocked_v1.1_rmsd1.0_pocket10'
+    crossdock_path = '/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10'
 
     m = 0
     idxes, all_atoms, all_coordinates, fail_idxes = [], [], [], []
@@ -286,12 +290,23 @@ if __name__ == "__main__":
 
         try:
             mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
-            try:
-                mol = Chem.RemoveHs(mol)
-            except:
-                pass
-            # Chem.SanitizeMol(mol)
             # mol.UpdatePropertyCache(strict=False)
+            # try:
+            #     Chem.SanitizeMol(mol)
+            # except:
+            #     mol.UpdatePropertyCache(strict=False)
+            Chem.SanitizeMol(mol)
+            # mol = Chem.MolFromMolFile("/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10/q15761_gxiillskjutioq-uhfffaoysa-n/uhfffaoysa_ligand_noh.sdf", sanitize=False)
+            # from rdkit.Chem import AllChem
+            # template = Chem.MolFromSmiles("O=C1OC2(CN1c1ccccc1)CCN(CC2)c1nc2c([nH]1)cc(cc2)C(F)(F)F")
+            # Chem.Kekulize(template)
+            # newMol = AllChem.AssignBondOrdersFromTemplate(template, mol)
+            # #AllChem.EmbedMolecule(mol)
+            # from rdkit.Chem import Draw
+            # img = Draw.MolsToGridImage([mol], molsPerRow=1, subImgSize=(300, 300))
+            # img.save('checkpoints/test5.png')
+
+            mol = Chem.RemoveHs(mol)
             mask = Mask(mol)
             mask_idxes = mask.get_all_mask()
             # num_nodes = mol.GetNumAtoms()
@@ -303,8 +318,6 @@ if __name__ == "__main__":
             print(f"{key} failed")
             mask_idxes = []
             fail_idxes.append(key)
-        # if idx in [136380, 136616, 136619, 136619, 141229, 141259, 141265, 141305, 141310, 141315, 141334, 141360, 141365, 141366, 141397, 141398, 141404, 141415, 141424, 141441, 141501, 141553, 141578, 156269, 157696, 157893, 158158, 159261]:
-        #     mask_idxes = []
         data['mask_indexes'] = mask_idxes
         txn_new.put(
             key=key,

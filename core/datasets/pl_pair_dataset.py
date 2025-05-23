@@ -321,7 +321,7 @@ class PocketLigandPairDatasetFeaturized(Dataset):
         raw_dataset = PocketLigandPairDataset(self.raw_path, None, 'final')
 
         split_path = os.path.join(
-            os.path.dirname(self.raw_path), 'crossdocked_pocket10_pose_split.pt',
+            os.path.dirname(self.raw_path), f'{os.path.basename(self.raw_path)}_pose_split.pt',
         )
         split = torch.load(split_path)
         train_ids, test_ids = split['train'], split['test']
