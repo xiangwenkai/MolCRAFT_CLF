@@ -20,22 +20,14 @@ class CrossAttention(nn.Module):
     """
 
     def __init__(self, input_dim, n_embd, out_dim, n_head, attn_pdrop=0.1, resid_pdrop=0.1, cross_pdrop=0.1,
-                 mode='cross', equi_module=None, lin_out=None, v_inference=None, feat_proj=None, equi_dim=32):
+                 mode='cross'):
         super().__init__()
         assert n_embd % n_head == 0
 
-        if equi_module is not None:
-            equi_dim = equi_dim
-            equi_dim_hidden = int(equi_dim*3)
-            # cross attention
-            self.cross_key = nn.Linear(equi_dim_hidden, equi_dim_hidden)
-            self.cross_query = nn.Linear(equi_dim_hidden, equi_dim_hidden)
-            self.cross_value = nn.Linear(equi_dim_hidden, equi_dim_hidden)
-        else:
-            # cross attention
-            self.cross_key = nn.Linear(n_embd, n_embd)
-            self.cross_query = nn.Linear(n_embd, n_embd)
-            self.cross_value = nn.Linear(n_embd, n_embd)
+        # cross attention
+        self.cross_key = nn.Linear(n_embd, n_embd)
+        self.cross_query = nn.Linear(n_embd, n_embd)
+        self.cross_value = nn.Linear(n_embd, n_embd)
 
 
         # regularization
@@ -43,22 +35,12 @@ class CrossAttention(nn.Module):
         self.resid_drop = nn.Dropout(resid_pdrop)
         self.cross_crop = nn.Dropout(cross_pdrop)
         # output projection
-        if equi_module is None:
-            self.proj = nn.Linear(out_dim, out_dim)
+        self.proj = nn.Linear(out_dim, out_dim)
         self.hidden_dim = n_embd
-
-        self.v_inference = v_inference
 
         num = 0
 
         self.n_head = n_head
-
-        if equi_module is not None:
-            self.equi = equi_module
-        if feat_proj is not None:
-            self.feat_proj = feat_proj
-        if lin_out is not None:
-            self.linear_out = lin_out
 
         if mode == 'concat':
             self.concat_proj = nn.Sequential(
@@ -70,85 +52,40 @@ class CrossAttention(nn.Module):
             )
 
         elif mode == 'cross':
-            if equi_module is not None:
-                self.cross_attn_proj = nn.Sequential(
-                    nn.Linear(input_dim, equi_dim_hidden),
-                    nn.GELU(),
-                    nn.Linear(equi_dim_hidden, equi_dim_hidden),
-                    nn.LayerNorm(equi_dim_hidden),
-                    nn.Dropout(cross_pdrop),
-                )
-            else:
-                self.cross_attn_proj = nn.Sequential(
-                    nn.Linear(input_dim, n_embd),
-                    nn.GELU(),
-                    nn.Linear(n_embd, n_embd),
-                    nn.LayerNorm(n_embd),
-                    nn.Dropout(cross_pdrop),
-                )
+            self.cross_attn_proj = nn.Sequential(
+                nn.Linear(input_dim, n_embd),
+                nn.GELU(),
+                nn.Linear(n_embd, n_embd),
+                nn.LayerNorm(n_embd),
+                nn.Dropout(cross_pdrop),
+            )
         else:
             raise ValueError('mode should be "concat" or "cross"')
 
     def map_values(self, fn, d):
         return {k: fn(v) for k, v in d.items()}
 
-    def forward(self, x, batch_ligand, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross', feats=None):
+    def forward(self, x, batch_ligand, batch_encoder, mask_ligand, encoder_embedding=None, encoder_mask=None, mode='cross'):
         # unique_ids_x = batch_x.unique()
         # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
         # lengths_x = [seq.size(0) for seq in grouped_x]
-        unique_ids_x = batch_ligand.unique()
+        unique_ids_x = batch_encoder.unique()
         x_lig = x[mask_ligand]
-
-        if feats is not None:
-            grouped_x = [x_lig[batch_ligand == uid] for uid in unique_ids_x]
-            lengths_x = [seq.size(0) for seq in grouped_x]
-            padded_x = pad_sequence(grouped_x, batch_first=True)
-
-            feats = feats[mask_ligand]
-            # feats_h = self.v_inference(feats)
-            # feats_h = torch.nn.functional.softmax(feats_h, dim=-1)
-            # feats_h = torch.distributions.Categorical(feats_h).sample()
-            feats = self.feat_proj(feats)
-            group_feats = [feats[batch_ligand == uid] for uid in unique_ids_x]
-            padded_feats = pad_sequence(group_feats, batch_first=True)
-
-            mask = torch.ones((padded_x.size(0), padded_x.size(1))).bool().to(x_lig.device)
-            output = self.equi(padded_feats, padded_x, mask)  # (1, 128)
-
-            output['0'] = output['0'].unsqueeze(dim=-1)
-            # output1 = self.linear_out(output)
-            Q_input = output['1'].clone().reshape(output['1'].size(0), output['1'].size(1), -1)
-            B, T, C = Q_input.size()
-
-            # feats = torch.randn(4, 33, 128)
-            # coors = torch.randn(4, 33, 3)
-            # mask = torch.ones(4, 33).bool()
-            # out = model(feats, coors, mask)  #
-
-        else:
-            grouped_x = [x_lig[batch_ligand == uid] for uid in unique_ids_x]
-            lengths_x = [seq.size(0) for seq in grouped_x]
-            Q_input = pad_sequence(grouped_x, batch_first=True)
-            B, T, C = Q_input.size()
-        if encoder_mask is not None:
+        grouped_x = [x_lig[batch_encoder == uid] for uid in unique_ids_x]
+        lengths_x = [seq.size(0) for seq in grouped_x]
+        padded_x = pad_sequence(grouped_x, batch_first=True)
+        B, T, C = padded_x.size()
+        if encoder_mask is not None and encoder_mask is not None:
             unique_ids_encoder = batch_encoder.unique()
             grouped_encoder = [encoder_embedding[batch_encoder == uid] for uid in unique_ids_encoder]
             lengths_encoder = [seq.size(0) for seq in grouped_encoder]
             padded_encoder = pad_sequence(grouped_encoder, batch_first=True)
-            emb_b, emb_l, emb_d = padded_encoder.shape
 
             encoder_mask = encoder_mask.to(x.device)
             grouped_encoder_mask = [encoder_mask[batch_encoder == uid] for uid in unique_ids_encoder]
             encoder_mask = pad_sequence(grouped_encoder_mask, batch_first=True)
 
-            noise = torch.rand(emb_l, device=x.device)
-            scores = encoder_mask.float() * 2.0 + noise.unsqueeze(0)
-            sorted_idx = torch.argsort(scores, dim=1, descending=False)
-            idx_expanded = sorted_idx.unsqueeze(-1).expand(-1, -1, emb_d)
-            reordered_padded_encoder = torch.gather(padded_encoder, dim=1, index=idx_expanded)
-            reordered_encoder_mask = torch.gather(encoder_mask, dim=1, index=sorted_idx)
-
-        if reordered_padded_encoder is not None and reordered_encoder_mask is not None:
+        if encoder_embedding is not None and encoder_mask is not None:
             ## option 1: pool encoder_embedding to a single vector, then concat it to each position and use MLP to adjust dimension
             if mode == 'concat':
                 # import pdb; pdb.set_trace()
@@ -175,54 +112,40 @@ class CrossAttention(nn.Module):
 
             elif mode == 'cross':
                 ## option 2: encoder_embedding is a sequence of vectors, then use encoder_mask to mask the padding
-                # encoder_embedding shape is (B, S, C)£¬S is sequence length after padding
-                # encoder_mask shape is (B, S)£¬valid position is 1£¬padding position is 0
+                # encoder_embedding shape is (B, S, C)??S is sequence length after padding
+                # encoder_mask shape is (B, S)??valid position is 1??padding position is 0
                 # import pdb; pdb.set_trace()
-                B, S, _ = reordered_padded_encoder.size()
-                reordered_padded_encoder = self.cross_attn_proj(reordered_padded_encoder)
+                B, S, _ = padded_encoder.size()
+                padded_encoder = self.cross_attn_proj(padded_encoder)
                 # key, query, value
-                cross_k = self.cross_key(reordered_padded_encoder).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
-                cross_q = self.cross_query(Q_input).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-                cross_v = self.cross_value(reordered_padded_encoder).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_k = self.cross_key(padded_encoder).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_q = self.cross_query(padded_x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+                cross_v = self.cross_value(padded_encoder).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
 
                 # calculate cross attention weights
                 cross_att = (cross_q @ cross_k.transpose(-2, -1)) * (1.0 / math.sqrt(cross_k.size(-1)))
                 # import pdb; pdb.set_trace()
                 # apply encoder_mask to mask the padding position
-                if reordered_encoder_mask is not None:
+                if encoder_mask is not None:
                     # expand mask to match attention score shape (B, 1, 1, S)
-                    reordered_encoder_mask = reordered_encoder_mask.unsqueeze(1).unsqueeze(2)
+                    encoder_mask = encoder_mask.unsqueeze(1).unsqueeze(2)
                     # set the attention score of padding position to negative infinity
-                    cross_att = cross_att.masked_fill(reordered_encoder_mask == 0, -1e10)
+                    cross_att = cross_att.masked_fill(encoder_mask == 0, -1e-10)
 
                 # softmax
                 cross_att = F.softmax(cross_att, dim=-1)
                 cross_att = self.attn_drop(cross_att)
 
-                if feats is not None:
-                    cross_y = cross_att @ cross_v
-                    cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
-                    # output1 = self.linear_out({0: rearrange(output.type0, '... -> ... 1'), 1: cross_y.view(output[1].size())})
-                    # output1 = {k: rearrange(v, '... 1 c -> ... c') for k, v in output1.items()}
-                    # output['0'] = cross_y.unsqueeze(dim=-1)
-                    output['1'] = cross_y.view(output['1'].size())
-                    output = self.linear_out(output)
-                    output = self.map_values(lambda t: t.squeeze(dim=2), output)
-                    cross_y = output['1']
+                cross_y = cross_att @ cross_v
+                cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
 
-                else:
-                    cross_y = cross_att @ cross_v
-                    cross_y = cross_y.transpose(1, 2).contiguous().view(B, T, C)
             else:
                 raise ValueError('mode should be "concat" or "cross"')
-        if feats is not None:
-            y_unpadded = torch.cat([cross_y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
-            return y_unpadded
-        else:
-            # output projection
-            y = self.resid_drop(self.proj(cross_y))
-            y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
-            return y_unpadded
+
+        # output projection
+        y = self.resid_drop(self.proj(cross_y))
+        y_unpadded = torch.cat([y[i, :l] for i, l in enumerate(lengths_x)], dim=0)
+        return y_unpadded
 
 
 class BaseX2HAttLayer(nn.Module):
@@ -481,36 +404,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
         return layer
 
     def _build_share_blocks(self):
-        se3_dim = 8
-        feat_proj = nn.Sequential(
-            nn.Linear(self.hidden_dim, se3_dim),
-            nn.GELU(),
-            nn.Linear(se3_dim, se3_dim),
-            nn.LayerNorm(se3_dim),
-            nn.Dropout(0.1),
-        )
-        equi = SE3Transformer(
-                            dim = se3_dim,
-                            heads = 1,
-                            depth = 1,
-                            input_degrees=1,
-                            dim_head = 8,
-                            num_degrees = 2,
-                            valid_radius = 10,
-                            output_degrees=2,
-                            reduce_dim_out=False,  # if true, output dim is (..., 3)
-                                )
-        linear_out = SE3Transformer(
-                                    dim = se3_dim,
-                                    heads = 1,
-                                    depth = 1,
-                                    input_degrees=1,
-                                    dim_head = 8,
-                                    num_degrees = 2,
-                                    valid_radius = 10,
-                                    output_degrees=2,
-                                    reduce_dim_out=True,  # if true, output dim is (..., 3)
-                                ).linear_out
+
         # Equivariant layers
         base_block = []
         for l_idx in range(self.num_layers):
@@ -521,7 +415,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 ew_net_type=self.ew_net_type, x2h_out_fc=self.x2h_out_fc, sync_twoup=self.sync_twoup,
             )
             h_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=self.hidden_dim, n_head=max(int(self.n_heads/4), 1))  # input_dim is the lig embedding dim
-            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/4), 1), equi_module=equi, lin_out=linear_out, v_inference=self.v_inference, equi_dim=se3_dim, feat_proj=feat_proj)
+            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=max(int(self.n_heads/4), 1))
             base_block.append(nn.Sequential(layer, h_cross_atten_layer, x_cross_atten_layer))
         return nn.ModuleList(base_block)
 
@@ -575,7 +469,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                     h_new = h.clone()
                     h_new[mask_ligand] = h[mask_ligand] + h_g
                     x_g = layer[2](x=x, batch_ligand=batch_lig, batch_encoder=batch_emb, mask_ligand=mask_ligand,
-                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask, feats=h)
+                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                     x_new = x.clone()
                     x_new[mask_ligand] = x[mask_ligand] + x_g
                     h, x = layer[0](h_new, x_new, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
