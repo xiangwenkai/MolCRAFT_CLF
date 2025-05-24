@@ -75,7 +75,7 @@ class CrossAttention(nn.Module):
         lengths_x = [seq.size(0) for seq in grouped_x]
         padded_x = pad_sequence(grouped_x, batch_first=True)
         B, T, C = padded_x.size()
-        if encoder_mask is not None and encoder_mask is not None:
+        if encoder_mask is not None and encoder_embedding is not None:
             unique_ids_encoder = batch_encoder.unique()
             grouped_encoder = [encoder_embedding[batch_encoder == uid] for uid in unique_ids_encoder]
             lengths_encoder = [seq.size(0) for seq in grouped_encoder]

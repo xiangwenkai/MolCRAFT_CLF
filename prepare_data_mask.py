@@ -42,7 +42,7 @@ def remove_dummys_mol(molecule):
         dum_mol = Chem.MolFromSmiles(molecule)
     else:
         dum_mol = molecule
-    Chem.SanitizeMol(dum_mol)
+    # Chem.SanitizeMol(dum_mol)
     exits = get_exits(dum_mol)
     exit = exits[0]
     bonds = exit.GetBonds()
@@ -113,7 +113,7 @@ def remove_mark_mol(molecule):
         dum_mol = Chem.MolFromSmiles(molecule)
     else:
         dum_mol = molecule
-    Chem.SanitizeMol(dum_mol)
+    # Chem.SanitizeMol(dum_mol)
     marks = get_mark(dum_mol)
     mark = marks[0]
     bonds = mark.GetBonds()
@@ -155,12 +155,14 @@ class Mask():
         super().__init__()
 
         self.pattern = pattern
-        Chem.SanitizeMol(mol)
+        # Chem.SanitizeMol(mol)
         self.mol = mol
         self.num_atoms = mol.GetNumAtoms()
 
     def get_frag_mask(self):
         fragmentations = rdMMPA.FragmentMol(self.mol, minCuts=1, maxCuts=1, maxCutBonds=100, pattern=self.pattern, resultsAsMols=False)
+        if not fragmentations:
+            return ()
         fragmentation = random.choice(fragmentations)[1].replace('.', ',').split(',')  # no core
         id = random.randint(0, 1)
         masked_frag = remove_dummys_mol(fragmentation[id])[0]
@@ -221,22 +223,26 @@ class Mask():
 
     def get_all_mask(self):
         res = []
-        try:
-            frag_mask = self.get_frag_mask()
-        except:
-            frag_mask = []
-        try:
-            link_mask = self.get_link_mask()
-        except:
-            link_mask = []
-        try:
-            single_link_mask = self.get_single_link_mask()
-        except:
-            single_link_mask = []
-        try:
-            scaffold_mask = self.get_scaffold_side_chain_mask()
-        except:
-            scaffold_mask = []
+        frag_mask = self.get_frag_mask()
+        link_mask = self.get_link_mask()
+        single_link_mask = self.get_single_link_mask()
+        scaffold_mask = self.get_scaffold_side_chain_mask()
+        # try:
+        #     frag_mask = self.get_frag_mask()
+        # except:
+        #     frag_mask = []
+        # try:
+        #     link_mask = self.get_link_mask()
+        # except:
+        #     link_mask = []
+        # try:
+        #     single_link_mask = self.get_single_link_mask()
+        # except:
+        #     single_link_mask = []
+        # try:
+        #     scaffold_mask = self.get_scaffold_side_chain_mask()
+        # except:
+        #     scaffold_mask = []
         if frag_mask:
             res.extend(frag_mask)
         if link_mask:
@@ -288,36 +294,38 @@ if __name__ == "__main__":
         # if data['ligand_element'].size()[0] != mol.GetNumAtoms():
         #     fail_idxes.append(idx)
 
-        try:
-            mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
-            # mol.UpdatePropertyCache(strict=False)
-            # try:
-            #     Chem.SanitizeMol(mol)
-            # except:
-            #     mol.UpdatePropertyCache(strict=False)
-            Chem.SanitizeMol(mol)
-            # mol = Chem.MolFromMolFile("/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10/q15761_gxiillskjutioq-uhfffaoysa-n/uhfffaoysa_ligand_noh.sdf", sanitize=False)
-            # from rdkit.Chem import AllChem
-            # template = Chem.MolFromSmiles("O=C1OC2(CN1c1ccccc1)CCN(CC2)c1nc2c([nH]1)cc(cc2)C(F)(F)F")
-            # Chem.Kekulize(template)
-            # newMol = AllChem.AssignBondOrdersFromTemplate(template, mol)
-            # #AllChem.EmbedMolecule(mol)
-            # from rdkit.Chem import Draw
-            # img = Draw.MolsToGridImage([mol], molsPerRow=1, subImgSize=(300, 300))
-            # img.save('checkpoints/test5.png')
+        # try:
+        mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
+        # mol.UpdatePropertyCache(strict=False)
+        # try:
+        #     Chem.SanitizeMol(mol)
+        # except:
+        #     mol.UpdatePropertyCache(strict=False)
 
-            mol = Chem.RemoveHs(mol)
-            mask = Mask(mol)
-            mask_idxes = mask.get_all_mask()
-            # num_nodes = mol.GetNumAtoms()
+        Chem.SanitizeMol(mol)
 
-            # mol = Chem.RemoveHs(mol)
-            # smi = Chem.MolToSmiles(mol)
-            # name = smi
-        except:
-            print(f"{key} failed")
-            mask_idxes = []
-            fail_idxes.append(key)
+        # mol = Chem.MolFromMolFile("/data/wenkai/MolCRAFT_CLF/data/chembl_pocket10/q15761_gxiillskjutioq-uhfffaoysa-n/uhfffaoysa_ligand_noh.sdf", sanitize=False)
+        # from rdkit.Chem import AllChem
+        # template = Chem.MolFromSmiles("O=C1OC2(CN1c1ccccc1)CCN(CC2)c1nc2c([nH]1)cc(cc2)C(F)(F)F")
+        # Chem.Kekulize(template)
+        # newMol = AllChem.AssignBondOrdersFromTemplate(template, mol)
+        # #AllChem.EmbedMolecule(mol)
+        # from rdkit.Chem import Draw
+        # img = Draw.MolsToGridImage([mol], molsPerRow=1, subImgSize=(300, 300))
+        # img.save('checkpoints/test5.png')
+
+        mol = Chem.RemoveHs(mol)
+        mask = Mask(mol)
+        mask_idxes = mask.get_all_mask()
+        # num_nodes = mol.GetNumAtoms()
+
+        # mol = Chem.RemoveHs(mol)
+        # smi = Chem.MolToSmiles(mol)
+        # name = smi
+        # except:
+        #     print(f"{key} failed")
+        #     mask_idxes = []
+        #     fail_idxes.append(key)
         data['mask_indexes'] = mask_idxes
         txn_new.put(
             key=key,
