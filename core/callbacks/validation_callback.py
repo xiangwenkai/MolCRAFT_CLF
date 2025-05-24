@@ -278,14 +278,17 @@ class ValidationCallback(Callback):
             shutil.rmtree(path)
         os.makedirs(path, exist_ok=True)
         torch.save(results, os.path.join(path, f'generated.pt'))
-        
-        out_metrics = self.metric.evaluate(results)
-        torch.save(results, os.path.join(path, f'vina_docked.pt'))
-        out_metrics.update(recon_dict)
-        out_metrics = {f'val/{k}': v for k, v in out_metrics.items()}
-        pl_module.log_dict(out_metrics)
-        print(json.dumps(out_metrics, indent=4))
-        json.dump(out_metrics, open(os.path.join(path, 'metrics.json'), 'w'), indent=4)
+
+        try:
+            out_metrics = self.metric.evaluate(results)
+            torch.save(results, os.path.join(path, f'vina_docked.pt'))
+            out_metrics.update(recon_dict)
+            out_metrics = {f'val/{k}': v for k, v in out_metrics.items()}
+            pl_module.log_dict(out_metrics)
+            print(json.dumps(out_metrics, indent=4))
+            json.dump(out_metrics, open(os.path.join(path, 'metrics.json'), 'w'), indent=4)
+        except:
+            print("valid error!!!!!!!!!!!!!!!!!!(core/callbacks/validation_callback.py)")
 
 
 class VisualizeMolAndTrajCallback(Callback):
