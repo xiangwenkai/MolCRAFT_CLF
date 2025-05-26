@@ -536,7 +536,7 @@ class BFN4SBDDScoreModel(BFNBase):
         desc='',
         ligand_pos=None,  # for debug
         mask_strategy='random',
-        guide_weight = 1.8
+        guide_weight = -0.5
     ):
         """
         The function implements a sampling procedure for BFN
