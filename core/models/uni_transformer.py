@@ -69,9 +69,9 @@ class CrossAttention(nn.Module):
         # unique_ids_x = batch_x.unique()
         # grouped_x = [x[batch_x == uid] for uid in unique_ids_x]
         # lengths_x = [seq.size(0) for seq in grouped_x]
-        unique_ids_x = batch_encoder.unique()
+        unique_ids_x = batch_ligand.unique()
         x_lig = x[mask_ligand]
-        grouped_x = [x_lig[batch_encoder == uid] for uid in unique_ids_x]
+        grouped_x = [x_lig[batch_ligand == uid] for uid in unique_ids_x]
         lengths_x = [seq.size(0) for seq in grouped_x]
         padded_x = pad_sequence(grouped_x, batch_first=True)
         B, T, C = padded_x.size()
