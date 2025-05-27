@@ -172,7 +172,7 @@ class SBDDTrainLoop(pl.LightningModule):
         n_samples = self.cfg.evaluation.num_samples
         for _ in range(n_samples):
             batch_output = self.shared_sampling_step(batch, batch_idx, sample_num_atoms=self.cfg.evaluation.sample_num_atoms, 
-                                                     desc=f'Test-{_}/{n_samples}', mask_strategy='fix')
+                                                     desc=f'Test-{_}/{n_samples}', mask_strategy='fix', guide_weight=self.cfg.dynamics.guide_weight)
             # for idx, item in enumerate(batch_output):
             out_data_list.append(batch_output)
                 
@@ -182,7 +182,7 @@ class SBDDTrainLoop(pl.LightningModule):
                 out_data_list_reorder.append(out_data_list[j][i])
         return out_data_list_reorder
 
-    def shared_sampling_step(self, batch, batch_idx, sample_num_atoms, desc='', mask_strategy='random'):
+    def shared_sampling_step(self, batch, batch_idx, sample_num_atoms, desc='', mask_strategy='random', guide_weight=-0.5):
         # here we need to sample the molecules in the validation step
         protein_pos, protein_v, batch_protein, ligand_pos, ligand_v, batch_ligand, lig_emb, batch_emb, mask_indexes = (
             batch.protein_pos,
@@ -243,6 +243,7 @@ class SBDDTrainLoop(pl.LightningModule):
             # ligand_pos=ligand_pos,  # for debug only
             desc=desc,
             mask_strategy=mask_strategy,
+            guide_weight=guide_weight
         )
 
         # restore ligand to original position

@@ -100,9 +100,10 @@ class BFN4SBDDScoreModel(BFNBase):
         time_emb_dim=1,
         center_pos_mode='protein',
         pos_init_mode='zero',
-        destination_prediction = False,
-        sampling_strategy = "vanilla",
-        cond_rate = 0.9
+        destination_prediction=False,
+        sampling_strategy="vanilla",
+        cond_rate=0.9,
+        guide_weight=-0.5,
     ):
         super(BFN4SBDDScoreModel, self).__init__()
         # if include_charge:
