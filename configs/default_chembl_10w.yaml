@@ -31,6 +31,7 @@ dynamics:
   time_emb_mode: !SUB ${time_emb_mode}
   center_pos_mode: protein
   pos_init_mode: !SUB ${pos_init_mode}
+  guide_weight: -0.5
   net_config:
       name: "unio2net"
       num_blocks: 1
