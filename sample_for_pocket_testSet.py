@@ -49,7 +49,7 @@ from rdkit import Chem
 random.seed(42)
 
 
-def get_dataloader_from_pdb(cfg, emb_info, guide_index):
+def get_dataloader_from_pdb(cfg, emb_info, mask_index):
     assert cfg.evaluation.protein_path is not None and cfg.evaluation.ligand_path is not None
     protein_fn, ligand_fn = cfg.evaluation.protein_path, cfg.evaluation.ligand_path
 
@@ -75,7 +75,7 @@ def get_dataloader_from_pdb(cfg, emb_info, guide_index):
     data.ligand_filename = ligand_fn
 
     data.lig_emb = emb_info
-    data.mask_indexes = guide_index
+    data.mask_indexes = mask_index
 
     # transform
     protein_featurizer = trans.FeaturizeProteinAtom()
@@ -144,8 +144,8 @@ def on_test_epoch_end(outputs):
             w.write(mol)
 
 
-def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='',
-         num_samples=100, sample_steps=100, sample_num_atoms='ref',
+def call(protein_fn, ligand_fn, emb_info, mask_index, ckpt_path='',
+         num_samples=20, sample_steps=100, sample_num_atoms='ref',
          beta1=1.5, sigma1_coord=0.03, sampling_strategy='end_back', seed=1234,
          args=None, file_name=None):
     cfg = Config('./checkpoints/config.yaml')
@@ -169,7 +169,7 @@ def call(protein_fn, ligand_fn, emb_info, guide_index, ckpt_path='',
     # print(f"The config of this process is:\n{cfg}")
 
     print(protein_fn, ligand_fn)
-    test_loader = get_dataloader_from_pdb(cfg, emb_info, guide_index)
+    test_loader = get_dataloader_from_pdb(cfg, emb_info, mask_index)
     # wandb_logger.log_hyperparams(cfg.todict())
 
     model = SBDDTrainLoop(config=cfg)  # !!!!!!!!!!!!!!!!!! prop
@@ -329,11 +329,11 @@ class NpEncoder(json.JSONEncoder):
 
 
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv --sdf_folder_path output/test_frag
-    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv --sdf_folder_path output/test_link
-    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv --sdf_folder_path output/test_scaffold
-    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path output/test_denovo
-    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario nomask --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path output/test_nomask
+    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv --sdf_folder_path test_frag
+    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv --sdf_folder_path test_link
+    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv --sdf_folder_path test_scaffold
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path test_denovo
+    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario nomask --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path test_nomask
     parser = argparse.ArgumentParser()
     parser.add_argument('--scenario', type=str, default='denovo',
                         choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
@@ -365,33 +365,33 @@ if __name__ == '__main__':
         ligand_path = os.path.join(path, file_name, sdf_name)
         emb_info = torch.load(os.path.join(path, file_name, 'emb_info.pt'))
 
-        # guide_index = [[0,1,2,3,4,5,6,7,8]]
+        # mask_index = [[0,1,2,3,4,5,6,7,8]]
         try:
             mol = Chem.MolFromMolFile(ligand_path, sanitize=False)
             mol = Chem.RemoveHs(mol)
             num_nodes = mol.GetNumAtoms()
             mask = Mask(mol)
             if scenario == 'frag':
-                guide_index = mask.get_frag_mask()
+                mask_index = mask.get_frag_mask()
             elif scenario == 'link':
-                guide_index = [mask.get_link_mask(), mask.get_single_link_mask()]
+                mask_index = [mask.get_link_mask(), mask.get_single_link_mask()]
             elif scenario == 'scaffold':
-                guide_index = mask.get_scaffold_side_chain_mask()
+                mask_index = mask.get_scaffold_side_chain_mask()
             elif scenario == 'denovo':
-                guide_index = [[k for k in range(num_nodes)]]
+                mask_index = [[k for k in range(num_nodes)]]
             elif scenario == 'nomask':
-                guide_index = [[]]
+                mask_index = [[]]
 
-            print("guide_index:", guide_index)
+            print("mask_index:", mask_index)
 
         except:
             print(f"process {file_name} fail")
             continue
-        if scenario != 'denovo' and not guide_index:
+        if scenario != 'denovo' and not mask_index:
             print(f"index is none")
             continue
         try:
-            call(protein_path, ligand_path, emb_info, guide_index, args=args, file_name=file_name)
+            call(protein_path, ligand_path, emb_info, mask_index, args=args, file_name=file_name)
         except:
             print(f"fail to generate for {file_name}")
             continue
