@@ -8,6 +8,8 @@ from posecheck import PoseCheck
 import numpy as np
 from rdkit import Chem
 import argparse
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
 random.seed(42)
 
 
@@ -114,6 +116,9 @@ if __name__ == "__main__":
         sdf_name = [x for x in names if 'sdf' in x and 'pdbqt' not in x][0]
         protein_path = f'{path}/{f}/{pdb_name}'
         ligand_path = f'{path}/{f}/{sdf_name}'
+        ref_mol = Chem.SDMolSupplier(ligand_path, removeHs=False)[0]
+        ref_metric = scoring_func.get_chem(ref_mol)
+        print(f"ref metrics: qed {round(ref_metric['qed'], 3)} sa {round(ref_metric['sa'], 3)} lipinski {ref_metric['lipinski']}")
         if os.path.exists(f'/data4/wenkai/MolCRAFT_CLF/test_{scene}/{f}'):
             pred_sdfs = os.listdir(f'/data4/wenkai/MolCRAFT_CLF/test_{scene}/{f}')
             n = len(pred_sdfs)
@@ -125,6 +130,7 @@ if __name__ == "__main__":
                 qed.append(round(metrics['qed'], 3))
                 sa.append(round(metrics['sa'], 3))
                 lipinski.append(metrics['lipinski'])
+                print(f"generate metrics: qed {round(metrics['qed'], 3)} sa {round(metrics['sa'], 3)} lipinski {metrics['lipinski']}")
                 # logp.append(round(metrics['logp'], 3))
                 if metrics['vina_score'] < 0:
                     vina_score.append(round(metrics['vina_score'], 3))
