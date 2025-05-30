@@ -2,6 +2,8 @@ import os
 import random
 import pandas as pd
 import torch
+from rdkit import Chem, DataStructs
+from rdkit.Chem import AllChem
 from core.evaluation.utils import scoring_func
 from core.evaluation.docking_vina import VinaDockingTask
 from posecheck import PoseCheck
@@ -11,6 +13,33 @@ import argparse
 from rdkit import RDLogger
 RDLogger.DisableLog('rdApp.*')
 random.seed(42)
+
+
+def calculate_diversity(smiles_list):
+    """
+    计算生成分子的多样性（基于Tanimoto相似性）
+    :param smiles_list: 生成的SMILES列表
+    :return: diversity_score (0~1, 越高表示多样性越好)
+    """
+    if len(smiles_list) < 2:
+        return 0.0  # 如果分子数少于2，无法计算多样性
+    # 生成Morgan指纹（半径=2，长度=2048）
+    fps = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is not None:
+            fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=2048)
+            fps.append(fp)
+    # 计算所有分子对的Tanimoto相似性
+    similarities = []
+    for i in range(len(fps)):
+        for j in range(i + 1, len(fps)):
+            sim = DataStructs.TanimotoSimilarity(fps[i], fps[j])
+            similarities.append(sim)
+    # 多样性 = 1 - 平均相似性
+    avg_sim = np.mean(similarities) if similarities else 0.0
+    diversity = 1 - avg_sim
+    return diversity
 
 
 class Metrics:
@@ -109,7 +138,7 @@ if __name__ == "__main__":
     scene = args.scenario
     logs_dir = f"logs/test_{scene}"
     os.makedirs(logs_dir, exist_ok=True)
-    qeds, sas, lipinskis, logps, vina_scores, vina_mins, vina_docks = [], [], [], [], [], [], []
+    qeds, sas, lipinskis, divs, logps, vina_scores, vina_mins, vina_docks = [], [], [], [], [], [], [], []
     for f in files:
         names = os.listdir(f'{path}/{f}')
         pdb_name = [x for x in names if 'pdb' in x and 'pdbqt' not in x][0]
@@ -124,6 +153,9 @@ if __name__ == "__main__":
             n = len(pred_sdfs)
             qed, sa, lipinski, logp, vina_score, vina_min, vina_dock = [], [], [], [], [], [], []
             n_vina, n_vina_min = n, n
+            smis = [Chem.MolToSmiles(Chem.SDMolSupplier(f'/data4/wenkai/MolCRAFT_CLF/test_{scene}/{f}/{pred_sdf}')[0]) for pred_sdf in pred_sdfs]
+            div = calculate_diversity(smis)
+            divs.append(div)
             for i, pred_sdf in enumerate(pred_sdfs):
                 out_fn = f'/data4/wenkai/MolCRAFT_CLF/test_{scene}/{f}/{pred_sdf}'
                 metrics = Metrics(protein_path, ligand_path, out_fn).evaluate()
@@ -163,6 +195,6 @@ if __name__ == "__main__":
             vina_docks.append(sum(vina_dock) / n)
             lipinskis.append(sum(lipinski) / n)
     res = pd.DataFrame(
-        {'qed': qeds, 'sa': sas, 'vina_score': vina_scores, 'vina_min': vina_mins, 'vina_dock': vina_docks,
+        {'qed': qeds, 'sa': sas, 'div': divs, 'vina_score': vina_scores, 'vina_min': vina_mins, 'vina_dock': vina_docks,
          'lipinski': lipinskis})
     res.to_csv(f'/data4/wenkai/MolCRAFT_CLF/test_{scene}/res_{scene}.csv', index=False)
