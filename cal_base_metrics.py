@@ -1,0 +1,176 @@
+import os
+import random
+import pandas as pd
+import torch
+from rdkit import Chem, DataStructs
+from rdkit.Chem import AllChem
+from core.evaluation.utils import scoring_func
+from core.evaluation.docking_vina import VinaDockingTask
+from posecheck import PoseCheck
+import numpy as np
+from rdkit import Chem
+import argparse
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
+random.seed(42)
+
+
+def calculate_diversity(smiles_list):
+    """
+    计算生成分子的多样性（基于Tanimoto相似性）
+    :param smiles_list: 生成的SMILES列表
+    :return: diversity_score (0~1, 越高表示多样性越好)
+    """
+    if len(smiles_list) < 2:
+        return 0.0  # 如果分子数少于2，无法计算多样性
+    # 生成Morgan指纹（半径=2，长度=2048）
+    fps = []
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is not None:
+            fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius=2, nBits=2048)
+            fps.append(fp)
+    # 计算所有分子对的Tanimoto相似性
+    similarities = []
+    for i in range(len(fps)):
+        for j in range(i + 1, len(fps)):
+            sim = DataStructs.TanimotoSimilarity(fps[i], fps[j])
+            similarities.append(sim)
+    # 多样性 = 1 - 平均相似性
+    avg_sim = np.mean(similarities) if similarities else 0.0
+    diversity = 1 - avg_sim
+    return diversity
+
+
+class Metrics:
+    def __init__(self, protein_fn, ref_ligand_fn, ligand_fn):
+        self.protein_fn = protein_fn
+        self.ref_ligand_fn = ref_ligand_fn
+        self.ligand_fn = ligand_fn
+        self.exhaustiveness = 16
+    def vina_dock(self, mol):
+        chem_results = {}
+        try:
+            # qed, logp, sa, lipinski, ring size, etc
+            chem_results.update(scoring_func.get_chem(mol))
+            chem_results['atom_num'] = mol.GetNumAtoms()
+            # docking
+            vina_task = VinaDockingTask.from_generated_mol(mol, ligand_filename=self.ref_ligand_fn, protein_root='./')
+            score_only_results = vina_task.run(mode='score_only', exhaustiveness=self.exhaustiveness)
+            minimize_results = vina_task.run(mode='minimize', exhaustiveness=self.exhaustiveness)
+            docking_results = vina_task.run(mode='dock', exhaustiveness=self.exhaustiveness)
+            chem_results['vina_score'] = score_only_results[0]['affinity']
+            chem_results['vina_minimize'] = minimize_results[0]['affinity']
+            chem_results['vina_dock'] = docking_results[0]['affinity']
+            chem_results['vina_dock_pose'] = docking_results[0]['pose']
+            return chem_results
+        except Exception as e:
+            print("vina score failed")
+            print(e)
+        return chem_results
+    def pose_check(self, mol):
+        pc = PoseCheck()
+        pose_check_results = {}
+        protein_ready = False
+        try:
+            pc.load_protein_from_pdb(self.protein_fn)
+            protein_ready = True
+        except ValueError as e:
+            return pose_check_results
+        ligand_ready = False
+        try:
+            pc.load_ligands_from_mols([mol])
+            ligand_ready = True
+        except ValueError as e:
+            return pose_check_results
+        if ligand_ready:
+            try:
+                strain = pc.calculate_strain_energy()[0]
+                pose_check_results['strain'] = strain
+            except Exception as e:
+                pass
+        if protein_ready and ligand_ready:
+            try:
+                clash = pc.calculate_clashes()[0]
+                pose_check_results['clash'] = clash
+            except Exception as e:
+                pass
+            try:
+                df = pc.calculate_interactions()
+                columns = np.array([column[2] for column in df.columns])
+                flags = np.array([df[column][0] for column in df.columns])
+                def count_inter(inter_type):
+                    if len(columns) == 0:
+                        return 0
+                    count = sum((columns == inter_type) & flags)
+                    return count
+                # ['Hydrophobic', 'HBDonor', 'VdWContact', 'HBAcceptor']
+                hb_donor = count_inter('HBDonor')
+                hb_acceptor = count_inter('HBAcceptor')
+                vdw = count_inter('VdWContact')
+                hydrophobic = count_inter('Hydrophobic')
+                pose_check_results['hb_donor'] = hb_donor
+                pose_check_results['hb_acceptor'] = hb_acceptor
+                pose_check_results['vdw'] = vdw
+                pose_check_results['hydrophobic'] = hydrophobic
+            except Exception as e:
+                pass
+        for k, v in pose_check_results.items():
+            mol.SetProp(k, str(v))
+        return pose_check_results
+    def evaluate(self):
+        mol = Chem.SDMolSupplier(self.ligand_fn, removeHs=False)[0]
+        chem_results = self.vina_dock(mol)
+        try:
+            pose_check_results = self.pose_check(mol)
+            chem_results.update(pose_check_results)
+        except:
+            print(f"pose check fail !!!!!!!")
+        return chem_results
+    def base_metric(self):
+        mol = Chem.SDMolSupplier(self.ligand_fn, removeHs=False)[0]
+        chem_results = {}
+        chem_results.update(scoring_func.get_chem(mol))
+        return chem_results
+
+if __name__ == "__main__":
+    # python cal_base_metrics.py --datadir test_nomask1
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--datadir', type=str, default='test_nomask')
+    args = parser.parse_args()
+    path = "/data4/wenkai/MolCRAFT_CLF/data/test_set"
+    files = os.listdir(path)
+    datadir = args.datadir
+    logs_dir = f"logs/{datadir}"
+    os.makedirs(logs_dir, exist_ok=True)
+    qeds, sas, lipinskis, divs = [], [], [], []
+    for f in files:
+        names = os.listdir(f'{path}/{f}')
+        pdb_name = [x for x in names if 'pdb' in x and 'pdbqt' not in x][0]
+        sdf_name = [x for x in names if 'sdf' in x and 'pdbqt' not in x][0]
+        protein_path = f'{path}/{f}/{pdb_name}'
+        ligand_path = f'{path}/{f}/{sdf_name}'
+        ref_mol = Chem.SDMolSupplier(ligand_path, removeHs=False)[0]
+        ref_metric = scoring_func.get_chem(ref_mol)
+        print(f"ref metrics: qed {round(ref_metric['qed'], 3)} sa {round(ref_metric['sa'], 3)} lipinski {ref_metric['lipinski']}")
+        if os.path.exists(f'/data4/wenkai/MolCRAFT_CLF/{datadir}/{f}'):
+            pred_sdfs = os.listdir(f'/data4/wenkai/MolCRAFT_CLF/{datadir}/{f}')
+            n = len(pred_sdfs)
+            qed, sa, lipinski = [], [], []
+            n_vina, n_vina_min = n, n
+            smis = [Chem.MolToSmiles(Chem.SDMolSupplier(f'/data4/wenkai/MolCRAFT_CLF/{datadir}/{f}/{pred_sdf}')[0]) for pred_sdf in pred_sdfs]
+            div = calculate_diversity(smis)
+            divs.append(div)
+            for i, pred_sdf in enumerate(pred_sdfs):
+                out_fn = f'/data4/wenkai/MolCRAFT_CLF/{datadir}/{f}/{pred_sdf}'
+                metrics = Metrics(protein_path, ligand_path, out_fn).base_metric()
+                qed.append(round(metrics['qed'], 3))
+                sa.append(round(metrics['sa'], 3))
+                lipinski.append(metrics['lipinski'])
+                print(f"generate metrics: qed {round(metrics['qed'], 3)} sa {round(metrics['sa'], 3)} lipinski {metrics['lipinski']}")
+            qeds.append(sum(qed) / n)
+            sas.append(sum(sa) / n)
+            lipinskis.append(sum(lipinski) / n)
+    res = pd.DataFrame(
+        {'qed': qeds, 'sa': sas, 'div': divs, 'lipinski': lipinskis})
+    res.to_csv(f'/data4/wenkai/MolCRAFT_CLF/{datadir}/res_{datadir}.csv', index=False)
