@@ -86,12 +86,12 @@ class CrossAttention(nn.Module):
             grouped_encoder_mask = [encoder_mask[batch_encoder == uid] for uid in unique_ids_encoder]
             encoder_mask = pad_sequence(grouped_encoder_mask, batch_first=True)
 
-            noise = torch.rand(emb_l, device=x.device)
-            scores = encoder_mask.float() * 2.0 + noise.unsqueeze(0)
-            sorted_idx = torch.argsort(scores, dim=1, descending=False)
-            idx_expanded = sorted_idx.unsqueeze(-1).expand(-1, -1, emb_d)
-            reordered_padded_encoder = torch.gather(padded_encoder, dim=1, index=idx_expanded)
-            reordered_encoder_mask = torch.gather(encoder_mask, dim=1, index=sorted_idx)
+            # noise = torch.rand(emb_l, device=x.device)
+            # scores = encoder_mask.float() * 2.0 + noise.unsqueeze(0)
+            # sorted_idx = torch.argsort(scores, dim=1, descending=False)
+            # idx_expanded = sorted_idx.unsqueeze(-1).expand(-1, -1, emb_d)
+            # reordered_padded_encoder = torch.gather(padded_encoder, dim=1, index=idx_expanded)
+            # reordered_encoder_mask = torch.gather(encoder_mask, dim=1, index=sorted_idx)
 
         if encoder_embedding is not None and encoder_mask is not None:
             ## option 1: pool encoder_embedding to a single vector, then concat it to each position and use MLP to adjust dimension
@@ -123,8 +123,8 @@ class CrossAttention(nn.Module):
                 # encoder_embedding shape is (B, S, C)??S is sequence length after padding
                 # encoder_mask shape is (B, S)??valid position is 1??padding position is 0
                 # import pdb; pdb.set_trace()
-                B, S, _ = reordered_padded_encoder.size()
-                reordered_padded_encoder = self.cross_attn_proj(reordered_padded_encoder)
+                B, S, _ = padded_encoder.size()
+                reordered_padded_encoder = self.cross_attn_proj(padded_encoder)
                 # key, query, value
                 cross_k = self.cross_key(reordered_padded_encoder).view(B, S, self.n_head, C // self.n_head).transpose(1, 2)
                 cross_q = self.cross_query(padded_x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
@@ -136,7 +136,7 @@ class CrossAttention(nn.Module):
                 # apply encoder_mask to mask the padding position
                 if encoder_mask is not None:
                     # expand mask to match attention score shape (B, 1, 1, S)
-                    reordered_encoder_mask = reordered_encoder_mask.unsqueeze(1).unsqueeze(2)
+                    reordered_encoder_mask = encoder_mask.unsqueeze(1).unsqueeze(2)
                     # set the attention score of padding position to negative infinity
                     cross_att = cross_att.masked_fill(reordered_encoder_mask == 1, -1e10)
 
