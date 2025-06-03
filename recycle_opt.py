@@ -335,7 +335,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 
-def generate_emb(workdir):
+def generate_emb(workdir, ref_path):
     from unimol_tools import UniMolRepr
     clf = UniMolRepr(data_type='molecule',
                      remove_hs=True,
@@ -348,17 +348,27 @@ def generate_emb(workdir):
     for file_name in file_names:
         pred_sdfs = os.listdir(f'{workdir}/{file_name}')
         pred_sdfs = [x for x in pred_sdfs if x not in ['emb_info.pt', 'best.sdf']]
-        best_sdf = ''
-        best_score = 0
+
+        ref_files = os.listdir(f"{ref_path}/{file_name}")
+        ref_sdf = [x for x in ref_files if 'sdf' in x and 'pdbqt' not in x][0]
+        ref_sdf_path = f"{ref_path}/{file_name}/{ref_sdf}"
+        metrics = Metrics(protein_fn='', ref_ligand_fn='', ligand_fn=ref_sdf_path).base_metric()
+        best_qed = round(metrics['qed'], 3)
+        best_sa = round(metrics['sa'], 3)
+        best_score = 0.7 * best_qed + 0.3 * best_sa
+        print(f"ref qed: {best_qed}; sa: {best_sa}")
         for i, pred_sdf in enumerate(pred_sdfs):
             out_fn = f'{workdir}/{file_name}/{pred_sdf}'
             metrics = Metrics(protein_fn='', ref_ligand_fn='', ligand_fn=out_fn).base_metric()
             qed = round(metrics['qed'], 3)
             sa = round(metrics['sa'], 3)
-            score = 0.6*qed+0.4*sa
+            score = 0.7*qed+0.3*sa
             if score > best_score:
                 best_sdf = pred_sdf
-        os.system(f"cp {workdir}/{file_name}/{best_sdf} {workdir}/{file_name}/best.sdf")
+                best_qed = qed
+                best_sa = sa
+        print(f"generated best qed: {best_qed}; sa: {best_sa}")
+        # os.system(f"cp {workdir}/{file_name}/{best_sdf} {workdir}/{file_name}/best.sdf")
         mol = Chem.MolFromMolFile(f'{workdir}/{file_name}/{best_sdf}', sanitize=False)
         mol = Chem.RemoveHs(mol)
         # Chem.SanitizeMol(mol)
@@ -382,11 +392,11 @@ def generate_emb(workdir):
 
 
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=4 python sample_for_pocket_testSet.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv --sdf_folder_path test_frag
-    # CUDA_VISIBLE_DEVICES=5 python sample_for_pocket_testSet.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv --sdf_folder_path test_link
-    # CUDA_VISIBLE_DEVICES=6 python sample_for_pocket_testSet.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv --sdf_folder_path test_scaffold
-    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path test_denovo
-    # CUDA_VISIBLE_DEVICES=3 python sample_for_pocket_testSet.py --scenario nomask --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path test_nomask
+    # CUDA_VISIBLE_DEVICES=4 python recycle_opt.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv --sdf_folder_path test_frag
+    # CUDA_VISIBLE_DEVICES=5 python recycle_opt.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv --sdf_folder_path test_link
+    # CUDA_VISIBLE_DEVICES=6 python recycle_opt.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv --sdf_folder_path test_scaffold
+    # CUDA_VISIBLE_DEVICES=3 python recycle_opt.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path test_denovo
+    # CUDA_VISIBLE_DEVICES=6 python recycle_opt.py --scenario nomask --data_path /data4/wenkai/MolCRAFT_CLF/data/test_set --sdf_folder_path test_nomask1
     parser = argparse.ArgumentParser()
     parser.add_argument('--scenario', type=str, default='denovo',
                         choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
@@ -403,10 +413,9 @@ if __name__ == '__main__':
 
     scenario = args.scenario  # frag, link, scaffold, denovo
     pre_dir = f"/data4/wenkai/MolCRAFT_CLF/test_{scenario}"
-    generate_emb(pre_dir)
-    print("generate embedding success !!!")
-
     path = args.data_path
+    generate_emb(pre_dir, ref_path=path)
+    print("generate embedding success !!!")
     file_names = os.listdir(path)
     for file_idx, file_name in enumerate(file_names):
         if os.path.exists(f"{args.sdf_folder_path}/{file_name}"):
