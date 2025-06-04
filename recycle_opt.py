@@ -392,14 +392,11 @@ def generate_emb(workdir, ref_path):
 
 
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=4 python recycle_opt.py --scenario frag --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_frag_last_v2.csv --sdf_folder_path test_frag
-    # CUDA_VISIBLE_DEVICES=5 python recycle_opt.py --scenario link --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_link_last_v2.csv --sdf_folder_path test_link
-    # CUDA_VISIBLE_DEVICES=6 python recycle_opt.py --scenario scaffold --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_scaffold_last_v2.csv --sdf_folder_path test_scaffold
-    # CUDA_VISIBLE_DEVICES=3 python recycle_opt.py --scenario denovo --data_path /data/wenkai/MolCRAFT_CLF/data/test_set --output_file res/res_denovo_last_v2.csv --sdf_folder_path test_denovo
-    # CUDA_VISIBLE_DEVICES=6 python recycle_opt.py --scenario nomask --data_path /data4/wenkai/MolCRAFT_CLF/data/test_set --sdf_folder_path test_nomask1
+    # CUDA_VISIBLE_DEVICES=6 python recycle_opt.py --scenario nomask --data_path /data4/wenkai/MolCRAFT_CLF/data/test_set --pre_path /data4/wenkai/MolCRAFT_CLF/data/test_nomask1 --sdf_folder_path test_nomask2
     parser = argparse.ArgumentParser()
     parser.add_argument('--scenario', type=str, default='denovo',
                         choices=['frag', 'link', 'scaffold', 'denovo', 'nomask'])
+    parser.add_argument('--pre_path', type=str, default='/data4/wenkai/MolCRAFT_CLF/data/test_nomask')
     parser.add_argument('--data_path', type=str, default='/data4/wenkai/MolCRAFT_CLF/data/test_set')
     parser.add_argument('--output_file', type=str, default='res.csv')
     parser.add_argument('--sdf_folder_path', type=str, default='output')  # 默认同config.yaml中的test_outputs_dir
@@ -412,7 +409,7 @@ if __name__ == '__main__':
         os.environ['PATH'] = '/data/wenkai/anaconda3/envs/molcraft/bin:' + os.environ['PATH']
 
     scenario = args.scenario  # frag, link, scaffold, denovo
-    pre_dir = f"/data4/wenkai/MolCRAFT_CLF/test_{scenario}"
+    pre_dir = args.pre_path
     path = args.data_path
     generate_emb(pre_dir, ref_path=path)
     print("generate embedding success !!!")
