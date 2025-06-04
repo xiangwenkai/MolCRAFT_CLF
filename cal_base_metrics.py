@@ -11,6 +11,8 @@ import numpy as np
 from rdkit import Chem
 import argparse
 from rdkit import RDLogger
+from multiprocessing import Pool
+from functools import partial
 RDLogger.DisableLog('rdApp.*')
 random.seed(42)
 
@@ -133,6 +135,20 @@ class Metrics:
         chem_results.update(scoring_func.get_chem(mol))
         return chem_results
 
+def process_sdf(pred_sdf, protein_path, ligand_path, f, dir):
+    out_fn = f'/data4/wenkai/MolCRAFT_CLF/{dir}/{f}/{pred_sdf}'
+    metrics = Metrics(protein_path, ligand_path, out_fn).base_metric()
+    # if metrics['vina_score'] > 0 or metrics['vina_minimize'] > 0:
+    #     with open(f"{logs_dir}/log.txt", 'a') as log:
+    #         log.write(f"file: {f}   pred file: {pred_sdf}  vina score: {round(metrics['vina_score'], 3)}    vina min: {round(metrics['vina_minimize'], 3)}\n")
+    #     os.makedirs(f"logs/{dir}/{f}", exist_ok=True)
+    #     os.system(f"cp /data4/wenkai/MolCRAFT_CLF/{dir}/{f}/{pred_sdf} logs/{dir}/{f}/{pred_sdf}")
+    #     os.system(
+    #         f"cp /data4/wenkai/MolCRAFT_CLF/data/test_set/{f}/*.sdf logs/{dir}/{f}/ligand.sdf")
+    #     os.system(
+    #         f"cp /data4/wenkai/MolCRAFT_CLF/data/test_set/{f}/*.pdb logs/{dir}/{f}/protein.pdb")
+    return metrics
+
 if __name__ == "__main__":
     # python cal_base_metrics.py --datadir test_nomask1
     parser = argparse.ArgumentParser()
@@ -161,9 +177,19 @@ if __name__ == "__main__":
             smis = [Chem.MolToSmiles(Chem.SDMolSupplier(f'/data4/wenkai/MolCRAFT_CLF/{datadir}/{f}/{pred_sdf}')[0]) for pred_sdf in pred_sdfs]
             div = calculate_diversity(smis)
             divs.append(div)
-            for i, pred_sdf in enumerate(pred_sdfs):
-                out_fn = f'/data4/wenkai/MolCRAFT_CLF/{datadir}/{f}/{pred_sdf}'
-                metrics = Metrics(protein_path, ligand_path, out_fn).base_metric()
+
+            worker = partial(process_sdf,
+                             protein_path=protein_path,
+                             ligand_path=ligand_path,
+                             dir=datadir,
+                             f=f)
+            with Pool(processes=4) as pool:
+                all_metrics = pool.map(worker, pred_sdfs)
+
+            # for i, pred_sdf in enumerate(pred_sdfs):
+            #     out_fn = f'/data4/wenkai/MolCRAFT_CLF/{datadir}/{f}/{pred_sdf}'
+            #     metrics = Metrics(protein_path, ligand_path, out_fn).base_metric()
+            for metrics in all_metrics:
                 qed.append(round(metrics['qed'], 3))
                 sa.append(round(metrics['sa'], 3))
                 lipinski.append(metrics['lipinski'])
