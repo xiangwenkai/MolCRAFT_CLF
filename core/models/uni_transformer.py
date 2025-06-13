@@ -78,9 +78,9 @@ class CrossAttention(nn.Module):
         if encoder_mask is not None and encoder_embedding is not None:
             unique_ids_encoder = batch_encoder.unique()
             grouped_encoder = [encoder_embedding[batch_encoder == uid] for uid in unique_ids_encoder]
-            lengths_encoder = [seq.size(0) for seq in grouped_encoder]
+            # lengths_encoder = [seq.size(0) for seq in grouped_encoder]
             padded_encoder = pad_sequence(grouped_encoder, batch_first=True)
-            emb_b, emb_l, emb_d = padded_encoder.shape
+            # emb_b, emb_l, emb_d = padded_encoder.shape
 
             encoder_mask = encoder_mask.to(x.device)
             grouped_encoder_mask = [encoder_mask[batch_encoder == uid] for uid in unique_ids_encoder]
@@ -423,8 +423,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                 ew_net_type=self.ew_net_type, x2h_out_fc=self.x2h_out_fc, sync_twoup=self.sync_twoup,
             )
             h_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=self.hidden_dim, n_head=max(int(self.n_heads/4), 1))  # input_dim is the lig embedding dim
-            x_cross_atten_layer = CrossAttention(input_dim=512, n_embd=self.hidden_dim, out_dim=3, n_head=1)
-            base_block.append(nn.Sequential(layer, h_cross_atten_layer, x_cross_atten_layer))
+            base_block.append(nn.Sequential(layer, h_cross_atten_layer))
         return nn.ModuleList(base_block)
 
     def _connect_edge(self, x, mask_ligand, batch):
@@ -476,10 +475,6 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                     h_g = layer[1](x=h, batch_ligand=batch_lig, batch_encoder=batch_emb, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                     h_new = h.clone()
                     h_new[mask_ligand] = h[mask_ligand] + h_g
-                    x_g = layer[2](x=x, batch_ligand=batch_lig, batch_encoder=batch_emb, mask_ligand=mask_ligand,
-                                   encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
-                    x_new = x.clone()
-                    x_new[mask_ligand] = x[mask_ligand] + x_g
                     h, x = layer[0](h_new, x_new, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
                 else:
                     h, x = layer[0](h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
