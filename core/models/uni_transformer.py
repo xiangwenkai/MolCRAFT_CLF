@@ -475,7 +475,7 @@ class UniTransformerO2TwoUpdateGeneral(nn.Module):
                     h_g = layer[1](x=h, batch_ligand=batch_lig, batch_encoder=batch_emb, mask_ligand=mask_ligand, encoder_embedding=lig_embedding, encoder_mask=embedding_mask)
                     h_new = h.clone()
                     h_new[mask_ligand] = h[mask_ligand] + h_g
-                    h, x = layer[0](h_new, x_new, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
+                    h, x = layer[0](h_new, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
                 else:
                     h, x = layer[0](h, x, edge_type, edge_index, mask_ligand, e_w=e_w, fix_x=fix_x)
             all_x.append(x)
